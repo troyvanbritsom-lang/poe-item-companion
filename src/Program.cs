@@ -44,6 +44,8 @@ namespace Poe2ItemCompanion
             {
                 string firstArg = args[0].ToLowerInvariant();
                 if (firstArg == "--test-ui") return UiTests.Run(args.Length > 1 ? Path.GetFullPath(args[1]) : null);
+                if (firstArg == "--test-pob-bridge") return PobBridgeTests.Run(
+                    args.Length > 1 ? Path.GetFullPath(args[1]) : null, args.Length > 2 ? Path.GetFullPath(args[2]) : null);
                 if (firstArg == "--test-dual-game") return DualGameTests.Run();
                 if (firstArg == "--test-gem-acquisition") return DualGameTests.RunAcquisition();
                 if (firstArg == "--test-sources")
@@ -113,6 +115,8 @@ namespace Poe2ItemCompanion
             Console.WriteLine("  Poe2ItemCompanion.exe --test-ui [screenshot-directory]");
             Console.WriteLine("                                     Verify isolated UI themes/layouts without loading user builds");
             Console.WriteLine("                                     Verify PoE1 gem purchase guidance and required levels");
+            Console.WriteLine("  Poe2ItemCompanion.exe --test-pob-bridge [poe1-current.xml] [poe2-current.xml]");
+            Console.WriteLine("                                     Verify local bridge and native imports with throwaway builds");
             Console.WriteLine("  Poe2ItemCompanion.exe --log        Open the companion diagnostic log file");
             Console.WriteLine("  Poe2ItemCompanion.exe --help       Show this help screen");
             Console.WriteLine();
@@ -122,7 +126,7 @@ namespace Poe2ItemCompanion
             Console.WriteLine("  - Shows guide-relative item fit without replacing the Current character baseline");
             Console.WriteLine("  - Reuses the matching installed Path of Building calculation engine");
             Console.WriteLine("  - Displays compact red/green stat diff popup near mouse cursor");
-            Console.WriteLine("  - Never equips in-game or modifies a source; explicit export creates a NEW file");
+            Console.WriteLine("  - Never equips in-game; explicit PoB bridge saves only matching Current, export creates a NEW file");
         }
 
         private static AppConfig LoadConfig()

@@ -284,7 +284,10 @@ namespace Poe2ItemCompanion
                 Require(Children(form).OfType<TabControl>().All(t => t.DrawMode == TabDrawMode.OwnerDrawFixed), "Unthemed nested tabs.");
                 Invoke(form, "SetBusy", true, "Fixture operation");
                 Require(!Field<Button>(form, "_loadShareBtn").Enabled && !Field<Button>(form, "_reloadBuildBtn").Enabled, "Busy state lost.");
+                Require(!Field<Button>(form, "_pobImportBtn").Enabled && !Field<ComboBox>(form, "_buildDropdown").Enabled
+                    && !Field<Button>(form, "_settingsBtn").Enabled, "PoB import allows profile/source changes while busy.");
                 Invoke(form, "SetBusy", false, null);
+                Require(Field<Button>(form, "_pobImportBtn").Enabled, "PoB import button did not recover after operation.");
                 form.Scale(new SizeF(1.5f, 1.5f));
                 Application.DoEvents();
                 CheckRows(form);

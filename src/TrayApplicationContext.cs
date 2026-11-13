@@ -180,7 +180,7 @@ namespace Poe2ItemCompanion
 
         public void TriggerComparison()
         {
-            if (_isComparing) return;
+            if (_isComparing || (_mainWindow != null && _mainWindow.IsBusy)) return;
             if (!GameIdentity.IsForeground(_config))
             {
                 _notifyIcon.ShowBalloonTip(3000, "Selected game", "Open " + _config.GameName + " before capturing a hovered item. Use dashboard paste/compare for offline items.", ToolTipIcon.Warning);
@@ -289,6 +289,7 @@ Item Level: 82
 
         private void ReloadBuild()
         {
+            if (_mainWindow != null && _mainWindow.IsBusy) return;
             Logger.Info("Reloading Current character from tray request: " + _config.GetCurrentSourceDisplay());
             string err;
             var info = _config.LoadConfiguredBuild(_engine, out err);

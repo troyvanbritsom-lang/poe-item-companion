@@ -48,6 +48,8 @@ namespace Poe2ItemCompanion
         private Label _assumptionVal;
         private Label _baselineKindLabel;
         private Button _useCharacterBtn;
+        private Button _pobImportBtn;
+        private bool _bridgeBusy;
         private string _lastItemText;
         private string _lastBuildName;
 
@@ -166,6 +168,10 @@ namespace Poe2ItemCompanion
             _reloadBuildBtn.Click += (s, e) => ReloadActiveBuild(true);
             _useCharacterBtn = MakeButton("Use my character", 825, 41, 165, Color.FromArgb(110, 80, 30));
             _useCharacterBtn.Click += (s, e) => UseImportedCharacter();
+            _pobImportBtn = MakeButton("Import via PoB", 0, 0, 130, Color.FromArgb(45, 90, 65));
+            _pobImportBtn.AccessibleName = "Import selected PoB character into Current";
+            _pobImportBtn.Click += async (s, e) => await ImportViaPob();
+            _sourceTips.SetToolTip(_pobImportBtn, "Import tree, jewels, items and skills using the character selected in PoB. Saves only the open build matching CURRENT.");
 
             _activeSourceLabel = new Label { Location = new Point(12, 80), AutoSize = true, ForeColor = Color.FromArgb(130, 200, 255), Font = new Font("Segoe UI", 9f, FontStyle.Bold) };
 
@@ -243,7 +249,7 @@ namespace Poe2ItemCompanion
             sources.Controls.Add(_buildDropdown, 1, 1);
             sources.Controls.Add(UiTheme.Actions(_pasteShareBtn, _loadShareBtn, guideFile), 2, 0);
             sources.Controls.Add(UiTheme.Actions(_refreshBuildsBtn, _browseBuildBtn, _reloadBuildBtn, _useCharacterBtn), 2, 1);
-            var options = UiTheme.Actions(currentCode, _autoReloadCheck, _autoDetectCheck);
+            var options = UiTheme.Actions(_pobImportBtn, currentCode, _autoReloadCheck, _autoDetectCheck);
             _autoReloadCheck.Margin = _autoDetectCheck.Margin = new Padding(16, 8, 0, 0);
             sources.Controls.Add(options, 0, 2);
             sources.SetColumnSpan(options, 3);
@@ -587,12 +593,51 @@ namespace Poe2ItemCompanion
 
         private void SetBusy(bool busy, string status)
         {
-            IsBusy = busy;
-            Cursor = busy ? Cursors.WaitCursor : Cursors.Default;
-            _loadShareBtn.Enabled = !busy;
-            _reloadBuildBtn.Enabled = !busy;
+            IsBusy = busy || _bridgeBusy;
+            Cursor = IsBusy ? Cursors.WaitCursor : Cursors.Default;
+            _loadShareBtn.Enabled = !IsBusy;
+            _reloadBuildBtn.Enabled = !IsBusy;
+            _pobImportBtn.Enabled = !IsBusy;
+            _buildDropdown.Enabled = _browseBuildBtn.Enabled = _useCharacterBtn.Enabled = _settingsBtn.Enabled = !IsBusy;
+            // Prevent source changes and equip/export actions while the asynchronous bridge owns Current.
+            _tabs.Enabled = !IsBusy;
+            _buildDropdown.Parent.Enabled = !IsBusy;
             if (status != null) _statusLabel.Text = status;
             Update();
+        }
+
+        private async System.Threading.Tasks.Task ImportViaPob()
+        {
+            if (IsBusy) return;
+            _bridgeBusy = true;
+            SetBusy(true, "Connecting to PoB...");
+            string status;
+            try
+            {
+                var progress = new Progress<string>(text => { if (!IsDisposed && _bridgeBusy) _statusLabel.Text = text; });
+                await PobImportBridge.ImportAsync(_config, progress);
+                if (IsDisposed) return;
+                status = ReloadActiveBuild(true)
+                    ? "PoB import complete. CURRENT reloaded; GUIDE unchanged."
+                    : "PoB saved the import, but CURRENT could not be reloaded. Check the build error.";
+            }
+            catch (Exception ex)
+            {
+                status = ex is System.Net.Sockets.SocketException
+                    ? "PoB bridge unavailable. Restart the patched PoB, authenticate and select a character."
+                    : ex.Message;
+                // Do not include protocol, credentials, API payloads or paths in logs.
+                Logger.Warn("PoB import bridge did not complete (" + ex.GetType().Name + ").");
+                if (!IsDisposed)
+                    MessageBox.Show(this, status + "\n\nIf an import started, PoB may contain unsaved changes. Inspect it before retrying.",
+                        "PoB import", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            finally
+            {
+                _bridgeBusy = false;
+                if (!IsDisposed) SetBusy(false, null);
+            }
+            if (!IsDisposed) _statusLabel.Text = status;
         }
 
         public void RefreshBuildDropdown()
@@ -688,7 +733,7 @@ namespace Poe2ItemCompanion
             }
         }
 
-        public void ReloadActiveBuild(bool showErrors)
+        public bool ReloadActiveBuild(bool showErrors)
         {
             ResetComparisonPreview();
             SetBusy(true, "Loading build...");
@@ -700,12 +745,14 @@ namespace Poe2ItemCompanion
             if (info != null && info.Success)
             {
                 OnBuildLoaded(info, "Build loaded at " + DateTime.Now.ToString("HH:mm:ss"));
+                return true;
             }
             else
             {
                 OnBuildLoaded(null, null);
                 _statusLabel.Text = "No build loaded: " + err;
                 if (showErrors) MessageBox.Show(this, "Failed to load build:\n" + err, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
             }
         }
 
