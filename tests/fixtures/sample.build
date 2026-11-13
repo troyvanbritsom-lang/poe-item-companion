@@ -1,0 +1,1032 @@
+{
+    "name":  "Fixture Deadeye",
+    "author":  "companion-tests",
+    "link":  "https://example.invalid/fixture",
+    "description":  "Synthetic test build.\\nNot a real guide.",
+    "ascendancy":  "Ranger1",
+    "x_tool_version":  "fixture-1",
+    "x_meta":  {
+                   "planner":  "synthetic",
+                   "profiles":  [
+                                    "Leveling",
+                                    "Endgame"
+                                ]
+               },
+    "passives":  [
+                     {
+                         "id":  "ranger596",
+                         "level_interval":  [
+                                                1,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "projectiles15",
+                         "level_interval":  [
+                                                1,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "evasion_and_energy_shield26",
+                         "level_interval":  41,
+                         "additional_text":  "\u003cred\u003e{Take} this after \u003cb\u003e{Act 3}\\nfor speed",
+                         "x_order":  3
+                     },
+                     "dexterity34",
+                     "azmerianimals40",
+                     "projectiles22",
+                     {
+                         "id":  "attack6",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "AscendancyRanger1Small2",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "attributes74",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  2
+                     },
+                     {
+                         "id":  "elemental55",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  1
+                     },
+                     {
+                         "id":  "attack35",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  1
+                     },
+                     {
+                         "id":  "dexterity6",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "heralds16_",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  1
+                     },
+                     {
+                         "id":  "ranger_huntress_notable2",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "heralds10",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  1
+                     },
+                     {
+                         "id":  "evasion17_",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "dexterity81",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  2
+                     },
+                     {
+                         "id":  "projectiles8",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "AscendancyRanger1Notable4",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "exploiting_elemental_ailments10",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "AscendancyRanger1Small1__",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "dexterity20",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "dexterity10",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "evasion_and_energy_shield35_",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "azmerianimals44",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  2
+                     },
+                     {
+                         "id":  "marks17",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  2
+                     },
+                     {
+                         "id":  "dexterity12_",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "AscendancyRanger1Start",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "cold50",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  1
+                     },
+                     {
+                         "id":  "projectiles17",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "attack_speed46",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "cold49",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  1
+                     },
+                     {
+                         "id":  "elemental56",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  1
+                     },
+                     {
+                         "id":  "movement_speed5",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "attributes10",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "evasion31",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "cold29",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "bow19",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  1
+                     },
+                     {
+                         "id":  "dexterity11",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "dexterity58",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  2
+                     },
+                     {
+                         "id":  "shadow_monk_notable1",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "elemental25",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "cold_penetration7",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  1
+                     },
+                     {
+                         "id":  "cold39__",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "shock6",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  2
+                     },
+                     {
+                         "id":  "projectiles16",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "marks32",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  2
+                     },
+                     {
+                         "id":  "evasion24_",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "bow20",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  1
+                     },
+                     {
+                         "id":  "marks12",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  2
+                     },
+                     {
+                         "id":  "dexterity40",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "evasion_and_energy_shield27",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "evasion28",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "cold51",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  1
+                     },
+                     {
+                         "id":  "dexterity5",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "marks5_",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  2
+                     },
+                     {
+                         "id":  "evasion27",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "dexterity51",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "azmerianimals38",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "dexterity19",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "marks30",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  2
+                     },
+                     {
+                         "id":  "attack41__",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "attack_speed60_",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "evasion21",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "attributes9",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  2
+                     },
+                     {
+                         "id":  "ranged6",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "cold48",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "shock3",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  2
+                     },
+                     {
+                         "id":  "marks29",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  2
+                     },
+                     {
+                         "id":  "attack13_",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "elemental28",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "azmerianimals42",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "marks13",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  2
+                     },
+                     {
+                         "id":  "elemental16",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "dexterity57",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  2
+                     },
+                     {
+                         "id":  "evasion33",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "azmerianimals47",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  2
+                     },
+                     {
+                         "id":  "dexterity82_",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "movement_speed9",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "exploiting_elemental_ailments8",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "AscendancyRanger1Notable1",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "movement_speed4",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "marks15",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  2
+                     },
+                     {
+                         "id":  "cold44",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "shadow_monk_notable2",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "attack36",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  1
+                     },
+                     {
+                         "id":  "marks14",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  2
+                     },
+                     {
+                         "id":  "dexterity85_",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  2
+                     },
+                     {
+                         "id":  "shock15",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  2
+                     },
+                     {
+                         "id":  "marks16",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  2
+                     },
+                     {
+                         "id":  "elemental27",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "attack43",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  1
+                     },
+                     {
+                         "id":  "attack2",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "shock4",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  2
+                     },
+                     {
+                         "id":  "heralds12_",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  1
+                     },
+                     {
+                         "id":  "cold28",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "attack_speed37",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "projectiles23",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "dexterity55",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "attack42",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  1
+                     },
+                     {
+                         "id":  "AscendancyRanger1Small8",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "attack_speed57",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "elemental54",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  1
+                     },
+                     {
+                         "id":  "cold_penetration6",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "azmerianimals41",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "elemental_attacks8",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "attack_speed58",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "attributes29",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "bow23",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  1
+                     },
+                     {
+                         "id":  "elemental26",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "AscendancyRanger1Notable2_Choice",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "cold45",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "attack16",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  1
+                     },
+                     {
+                         "id":  "attack5",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  1
+                     },
+                     {
+                         "id":  "azmerianimals48",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  2
+                     },
+                     {
+                         "id":  "cold_penetration24",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  1
+                     },
+                     {
+                         "id":  "attack14",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  1
+                     },
+                     {
+                         "id":  "dexterity50",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "dexterity54",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "elemental_attacks6",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "AscendancyRanger1Notable2_2",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "attack45",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  1
+                     },
+                     {
+                         "id":  "jewel_slot1960",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "dexterity39",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "bow21",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  1
+                     },
+                     {
+                         "id":  "cold_penetration1",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  1
+                     },
+                     {
+                         "id":  "elemental32",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "dexterity52",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "azmerianimals43",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ],
+                         "weapon_set":  2
+                     },
+                     {
+                         "id":  "elemental18",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "not_a_real_passive_123",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     },
+                     {
+                         "id":  "projectiles14",
+                         "level_interval":  [
+                                                41,
+                                                100
+                                            ]
+                     }
+                 ],
+    "skills":  [
+                   {
+                       "id":  "Metadata/Items/Gems/SkillGemIceShot",
+                       "level_interval":  [
+                                              1,
+                                              100
+                                          ],
+                       "additional_text":  "Main skill",
+                       "x_slot":  "weapon",
+                       "support_skills":  [
+                                              {
+                                                  "id":  "Metadata/Items/Gem/SupportGemDeliberation",
+                                                  "level_interval":  [
+                                                                         1,
+                                                                         100
+                                                                     ],
+                                                  "x_note":  "singular Gem path"
+                                              },
+                                              {
+                                                  "id":  "Metadata/Items/Gems/SupportGemPrimalArmamentTwo",
+                                                  "level_interval":  41
+                                              }
+                                          ]
+                   },
+                   {
+                       "id":  "Metadata/Items/Gems/SkillGemDoesNotExistFixture",
+                       "level_interval":  [
+                                              1,
+                                              100
+                                          ]
+                   }
+               ],
+    "inventory_slots":  [
+                            {
+                                "inventory_id":  "Ring1",
+                                "slot_x":  0,
+                                "slot_y":  0,
+                                "level_interval":  [
+                                                       1,
+                                                       100
+                                                   ],
+                                "additional_text":  "Ring (Iron Ring)\\nStat Priority\\n1. +# to maximum Life\\n2. Cold Resistance\\n3. Attack Speed",
+                                "x_color":  "blue"
+                            },
+                            {
+                                "inventory_id":  "Weapon1",
+                                "slot_x":  0,
+                                "slot_y":  0,
+                                "level_interval":  41,
+                                "unique_name":  "Widowhail"
+                            },
+                            {
+                                "inventory_id":  "BodyArmour1",
+                                "slot_x":  0,
+                                "slot_y":  0,
+                                "level_interval":  [
+                                                       1,
+                                                       100
+                                                   ],
+                                "additional_text":  "Any evasion body armour"
+                            }
+                        ]
+}

@@ -1,0 +1,14 @@
+Item Class: Rings
+Rarity: Rare
+Gloom Circle
+Ruby Ring
+--------
+Requirements:
+Level: 60
+--------
+Item Level: 78
+--------
++35 to maximum Life
++12% to all Elemental Resistances
++40% to Fire Resistance
++25 to Dexterity
