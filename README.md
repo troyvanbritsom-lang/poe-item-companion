@@ -1,4 +1,4 @@
-# Path of Exile 1 / 2 Companion
+﻿# Path of Exile 1 / 2 Companion
 
 A lightweight Windows companion for **Path of Exile 1 and Path of Exile 2**, using the matching installed **Path of Building Community** engine.
 
@@ -41,9 +41,9 @@ Focused verification: `bin\Poe2ItemCompanion.exe --test-gem-acquisition`.
 
 ### Desktop appearance
 
-The dashboard, Current/Guide views, Settings, Current-code import dialog, comparison popup, diagnostic log and gem/passive checklist overlays share an anthracite palette with restrained gold headings, readable secondary text and consistent dark controls. Stat, rarity and checklist colors keep their existing meanings; unavailable dashboard stats use neutral text rather than loss colors.
+The desktop uses an obsidian-and-brass workbench theme: a custom vector sigil and masthead, serif section titles, alternating character-stat rows, gold primary actions, and layered dark surfaces. The shared palette also styles Current/Guide views, Settings, code import, comparison popups, diagnostic logs and checklist overlays. Stat, rarity and checklist colors retain their meanings. All artwork is drawn locally, with no downloaded assets or additional dependencies. The dashboard opens at 1240 × 900 and supports resizing down to 960 × 740.
 
-Source controls and Settings use grouped, resizing layouts. Current and Guide remain separate, long source paths can be inspected by hovering, and Settings scrolls on smaller windows while its action buttons stay visible. Tabs retain native keyboard navigation; overlays retain their non-activating, draggable behavior. Windows system-DPI awareness is enabled at startup; this is not per-monitor DPI support, and native window chrome, scrollbars and dropdown arrows remain Windows-rendered.
+Source controls and Settings use grouped, resizing layouts. Current and Guide remain separate, long source paths can be inspected by hovering, and Settings scrolls on smaller windows while its action buttons stay visible. Tabs retain native keyboard navigation; overlays retain their non-activating, draggable behavior. Windows system-DPI awareness is enabled at startup; this is not per-monitor DPI support, and title bars and window borders use dark Windows 11 caption colors. Scrollbars and dropdown arrows are skinned in the shared palette while retaining native scrolling and keyboard behavior. Tray submenus and text-edit context menus use the same dark styling. If Windows caption coloring is unavailable, a dark frame is drawn over the native caption; window buttons retain their native actions.
 
 Run `bin\Poe2ItemCompanion.exe --test-ui` for isolated theme/layout checks for both games, including text contrast (at least 4.5:1 for the shared normal/secondary/accent text palette), minimum/default/large window layouts and a simulated 150% layout scale. This harness uses synthetic content and throwaway settings, not user builds or configuration. Add a screenshot directory as the next argument to save UI snapshots for visual inspection.
 

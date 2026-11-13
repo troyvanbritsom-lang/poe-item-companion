@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -106,6 +106,7 @@ namespace Poe2ItemCompanion
                 Contrast(UiTheme.Accent, UiTheme.Surface);
                 Contrast(UiTheme.Text, UiTheme.Input);
                 Contrast(UiTheme.Text, UiTheme.Primary);
+                TestChrome(screenshots);
                 foreach (GameId game in new[] { GameId.Poe1, GameId.Poe2 })
                 {
                     var config = new AppConfig { Game = game, DisableSave = true, BuildDirectory = directory,
@@ -129,6 +130,65 @@ namespace Poe2ItemCompanion
             }
             catch (Exception ex) { Console.WriteLine("FAILED UI: " + ex); return 1; }
             finally { Directory.Delete(directory); }
+        }
+
+        private static void TestChrome(string screenshots)
+        {
+            using (var form = new Form { Text = "Companion theme verification", Size = new Size(640, 420) })
+            using (var menu = new ContextMenuStrip())
+            {
+                var combo = new ComboBox { Location = new Point(16, 16), Width = 260, DropDownStyle = ComboBoxStyle.DropDownList };
+                for (int i = 0; i < 40; i++) combo.Items.Add("Stage " + i);
+                combo.SelectedIndex = 0;
+                var text = new TextBox { Location = new Point(16, 60), Size = new Size(590, 280), Multiline = true, ScrollBars = ScrollBars.Both, WordWrap = false };
+                text.Text = string.Join("\r\n", Enumerable.Range(1, 100).Select(i => "Stat " + i + new string(' ', 100) + "end"));
+                form.Controls.AddRange(new Control[] { combo, text });
+                UiTheme.Apply(form);
+                UiTheme.Apply(form); // repeated theming must not create duplicate hooks/menus
+                form.Show();
+                Application.DoEvents();
+                combo.Focus();
+                SendMessage(combo.Handle, 0x100, new IntPtr((int)Keys.Down), IntPtr.Zero);
+                Require(combo.SelectedIndex == 1, "Skinned combo lost keyboard selection.");
+                combo.DroppedDown = true;
+                Application.DoEvents();
+                Require(combo.DroppedDown, "Skinned dropdown cannot open.");
+                combo.DroppedDown = false;
+                text.Focus();
+                text.Select(text.TextLength, 0);
+                SendMessage(text.Handle, 0xB6, IntPtr.Zero, new IntPtr(100));
+                Application.DoEvents();
+                Require(text.GetCharIndexFromPosition(new Point(3, 3)) > 0, "Skinned text cannot scroll to the end.");
+                SendMessage(text.Handle, 0x115, IntPtr.Zero, IntPtr.Zero); // native line-up
+                text.Select(0, 0);
+                SendMessage(text.Handle, 0xB6, IntPtr.Zero, new IntPtr(-100));
+                Application.DoEvents();
+                Require(text.GetCharIndexFromPosition(new Point(3, 3)) < 200, "Skinned text cannot scroll back to the start.");
+                text.ReadOnly = true;
+                text.ContextMenuStrip.Show(text, new Point(20, 20));
+                Application.DoEvents();
+                Require(!text.ContextMenuStrip.Items[2].Enabled && !text.ContextMenuStrip.Items[4].Enabled,
+                    "Read-only context menu permits edits.");
+                text.ContextMenuStrip.Close();
+                var nested = new ToolStripMenuItem("Companion game");
+                nested.DropDownItems.Add(new ToolStripMenuItem("Path of Exile 1") { Checked = true });
+                nested.DropDownItems.Add("Path of Exile 2");
+                menu.Items.Add(nested);
+                menu.Items.Add(new ToolStripMenuItem("Unavailable") { Enabled = false });
+                UiTheme.ApplyMenu(menu);
+                Require(menu.Renderer is CompanionMenuRenderer && nested.DropDown.Renderer is CompanionMenuRenderer,
+                    "Nested popup menu is not themed.");
+                menu.Show(form, new Point(300, 20));
+                Application.DoEvents();
+                using (var bitmap = new Bitmap(menu.Width, menu.Height))
+                {
+                    menu.DrawToBitmap(bitmap, new Rectangle(Point.Empty, menu.Size));
+                    if (!string.IsNullOrEmpty(screenshots)) bitmap.Save(Path.Combine(screenshots, "dark-menu.png"));
+                }
+                menu.Close();
+                Capture(form, screenshots, "dark-native-controls");
+                form.Hide();
+            }
         }
 
         private static void TestSettings(AppConfig config, string screenshots)

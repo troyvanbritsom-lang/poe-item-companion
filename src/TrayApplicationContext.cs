@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Drawing;
 using System.Windows.Forms;
@@ -167,6 +167,7 @@ namespace Poe2ItemCompanion
             exitItem.Click += (s, e) => ExitApp();
             menu.Items.Add(exitItem);
 
+            UiTheme.ApplyMenu(menu);
             var previous = _notifyIcon.ContextMenuStrip;
             _notifyIcon.ContextMenuStrip = menu;
             if (previous != null) previous.Dispose();

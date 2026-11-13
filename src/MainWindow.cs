@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Drawing;
@@ -116,8 +116,8 @@ namespace Poe2ItemCompanion
         private void InitializeComponent()
         {
             Text = _config.GameName + " Companion";
-            Size = new Size(1080, 760);
-            MinimumSize = new Size(960, 680);
+            Size = new Size(1240, 900);
+            MinimumSize = new Size(960, 740);
             StartPosition = FormStartPosition.CenterScreen;
             BackColor = Color.FromArgb(24, 24, 27);
             ForeColor = Color.White;
@@ -126,7 +126,7 @@ namespace Poe2ItemCompanion
 
             // Top bar: build source
             var topPanel = new Panel { Dock = DockStyle.Top, Height = 192, BackColor = UiTheme.Surface, Padding = new Padding(12, 8, 12, 8) };
-            var gold = Color.FromArgb(230, 200, 110);
+            var gold = UiTheme.Accent;
 
             var guideCaption = new Label { Text = "GUIDE code / link", Font = new Font("Segoe UI", 9.5f, FontStyle.Bold), ForeColor = gold, AutoSize = true };
             _shareCodeBox = new TextBox
@@ -319,10 +319,10 @@ namespace Poe2ItemCompanion
             Controls.Add(_tabs);
             Controls.Add(topPanel);
             Controls.Add(bottomPanel);
-            var gamePanel = new Panel { Dock = DockStyle.Top, Height = 46, BackColor = UiTheme.Surface, Padding = new Padding(12, 8, 12, 8) };
-            gamePanel.Controls.Add(new Label { Text = "Companion game:", AutoSize = true, Location = new Point(12, 12), ForeColor = Color.Gold });
+            var gamePanel = new WorkbenchHeader { Dock = DockStyle.Top, Height = 100, Padding = new Padding(16) };
+            gamePanel.Controls.Add(new Label { Text = "ACTIVE REALM", AutoSize = true, Location = new Point(500, 20), ForeColor = UiTheme.Accent, BackColor = Color.Transparent, Font = new Font("Segoe UI", 8f, FontStyle.Bold) });
             var selector = new ComboBox { Name = "Companion game selector", DropDownStyle = ComboBoxStyle.DropDownList,
-                Location = new Point(145, 8), Width = 220 };
+                Location = new Point(500, 43), Width = 220 };
             selector.Items.Add("Path of Exile 1");
             selector.Items.Add("Path of Exile 2");
             selector.SelectedIndex = _config.Game == GameId.Poe1 ? 0 : 1;
@@ -333,27 +333,29 @@ namespace Poe2ItemCompanion
                 if (!IsDisposed) selector.SelectedIndex = _config.Game == GameId.Poe1 ? 0 : 1;
             };
             gamePanel.Controls.Add(selector);
-            gamePanel.Controls.Add(new Label { Text = "Independent Current / Guide snapshots per game.", AutoSize = true,
-                Location = new Point(385, 12), ForeColor = Color.Silver });
+
             _hotkeyLabel.Dock = DockStyle.Right;
             _hotkeyLabel.AutoSize = false;
-            _hotkeyLabel.Width = 150;
+            _hotkeyLabel.Width = 180;
+            _hotkeyLabel.ForeColor = UiTheme.Accent;
+            _hotkeyLabel.BackColor = Color.Transparent;
             _hotkeyLabel.TextAlign = ContentAlignment.MiddleRight;
             gamePanel.Controls.Add(_hotkeyLabel);
             Controls.Add(gamePanel);
             UiTheme.Apply(this);
             UiTheme.Emphasize(_loadShareBtn);
+            UiTheme.Emphasize(_useCharacterBtn);
         }
 
         private Panel CreateBuildOverviewPanel()
         {
-            var panel = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(16) };
+            var panel = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(22), BackColor = UiTheme.Surface };
             var grid = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, RowCount = 2 };
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 128));
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            var heading = new Label { Text = "CURRENT CHARACTER", Font = new Font("Segoe UI", 10.5f, FontStyle.Bold), ForeColor = UiTheme.Text, AutoSize = true, Margin = new Padding(0, 0, 0, 8) };
+            var heading = new Label { Text = "Character snapshot", Font = new Font("Georgia", 18f), ForeColor = UiTheme.Text, AutoSize = true, Margin = new Padding(0, 0, 0, 8) };
             grid.Controls.Add(heading, 0, 0);
             grid.SetColumnSpan(heading, 2);
             _baselineKindLabel = new Label { Text = "-", Height = 40, Dock = DockStyle.Fill, ForeColor = UiTheme.Muted, Font = new Font("Segoe UI", 8.5f, FontStyle.Bold), Margin = Padding.Empty };
@@ -363,8 +365,8 @@ namespace Poe2ItemCompanion
             {
                 int index = grid.RowCount++;
                 grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-                grid.Controls.Add(new Label { Text = label, Dock = DockStyle.Fill, Height = 26, TextAlign = ContentAlignment.MiddleLeft, Margin = Padding.Empty, ForeColor = UiTheme.Muted }, 0, index);
-                var val = new Label { Text = "-", Height = 26, Dock = DockStyle.Fill, AutoEllipsis = true, ForeColor = valColor, Font = new Font("Segoe UI", 9.5f, FontStyle.Bold), TextAlign = ContentAlignment.MiddleLeft, Margin = Padding.Empty };
+                grid.Controls.Add(new Label { Text = label, Dock = DockStyle.Fill, Height = 32, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(8, 0, 0, 0), Margin = new Padding(0, 0, 0, 2), BackColor = index % 2 == 0 ? UiTheme.Input : UiTheme.Surface, ForeColor = UiTheme.Muted }, 0, index);
+                var val = new Label { Text = "-", Height = 32, Dock = DockStyle.Fill, AutoEllipsis = true, ForeColor = valColor, BackColor = index % 2 == 0 ? UiTheme.Input : UiTheme.Surface, Font = new Font("Segoe UI", 9.5f, FontStyle.Bold), TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(0, 0, 0, 2) };
                 grid.Controls.Add(val, 1, index);
                 return val;
             };
@@ -396,8 +398,8 @@ namespace Poe2ItemCompanion
         private Panel CreateComparisonPreviewPanel()
         {
             var panel = new Panel { Dock = DockStyle.Fill };
-            panel.Controls.Add(new Label { Text = "ITEM COMPARISON", Font = new Font("Segoe UI", 10.5f, FontStyle.Bold), ForeColor = UiTheme.Text, Location = new Point(14, 14), AutoSize = true });
-            var hint = new Label { Text = "Against Current gear; guide fit is separate. Paste item text (Ctrl+C in game), or use the hotkey in game.", ForeColor = UiTheme.Muted, Location = new Point(14, 40), Size = new Size(420, 40), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+            panel.Controls.Add(new Label { Text = "The appraisal bench", Font = new Font("Georgia", 18f), ForeColor = UiTheme.Text, Location = new Point(14, 14), AutoSize = true });
+            var hint = new Label { Text = "Against Current gear; guide fit is separate. Paste item text (Ctrl+C in game), or use the hotkey in game.", ForeColor = UiTheme.Muted, Location = new Point(14, 46), Size = new Size(420, 40), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
             panel.Controls.Add(hint);
 
             _sampleItemBox = new TextBox
@@ -414,7 +416,7 @@ namespace Poe2ItemCompanion
             };
             panel.Controls.Add(_sampleItemBox);
 
-            var compareBtn = MakeButton("Compare item text", 14, 212, 140, Color.FromArgb(40, 110, 60));
+            var compareBtn = MakeButton("Appraise item", 14, 212, 140, Color.FromArgb(40, 110, 60));
             compareBtn.Click += (s, e) => CompareText(_sampleItemBox.Text);
             var clipBtn = MakeButton("Compare from clipboard", 162, 212, 170, Color.FromArgb(50, 60, 80));
             clipBtn.Click += (s, e) =>
@@ -428,6 +430,7 @@ namespace Poe2ItemCompanion
                 _sampleItemBox.Text = text;
                 CompareText(text);
             };
+            compareBtn.Tag = "primary";
             panel.Controls.Add(compareBtn);
             panel.Controls.Add(clipBtn);
 
@@ -438,7 +441,7 @@ namespace Poe2ItemCompanion
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 BackColor = Color.FromArgb(20, 20, 22),
                 AutoScroll = true,
-                BorderStyle = BorderStyle.FixedSingle
+                BorderStyle = BorderStyle.None
             };
             ResetComparisonPreview();
             panel.Controls.Add(_comparisonContainer);
@@ -454,7 +457,7 @@ namespace Poe2ItemCompanion
         private void ResetComparisonPreview()
         {
             _comparisonContainer.Controls.Clear();
-            _comparisonContainer.Controls.Add(new Label { Text = "Paste an item above to compare it with Current gear.\r\nComparing does not change your build.", ForeColor = UiTheme.Muted, Dock = DockStyle.Top, Height = 64, Padding = new Padding(12) });
+            _comparisonContainer.Controls.Add(new Label { Text = "READY TO APPRAISE\r\n\r\nPaste an item above, then appraise it against your Current gear.\r\nComparing does not change your build.", ForeColor = UiTheme.Muted, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, Padding = new Padding(18) });
         }
 
         private Control CreateBuildTab()
@@ -901,7 +904,7 @@ namespace Poe2ItemCompanion
                 return;
             }
 
-            var gold = Color.FromArgb(230, 200, 110);
+            var gold = UiTheme.Accent;
             var dim = Color.FromArgb(150, 150, 160);
             var white = Color.FromArgb(225, 225, 230);
 
