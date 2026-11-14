@@ -38,6 +38,7 @@ return function(root, pob1, pob2, scratch)
 			return size
 		end
 		function client:close() env.closed = true end
+		env.acceptQueue = { client }
 		local listener = {}
 		function listener:settimeout(value) requireThat(value == 0, "Listener must not block UI") end
 		function listener:bind(host, port)
@@ -47,9 +48,9 @@ return function(root, pob1, pob2, scratch)
 		end
 		function listener:listen() return true end
 		function listener:accept()
-			if env.accepted then return nil, "timeout" end
-			env.accepted = true
-			return client
+			local accepted = table.remove(env.acceptQueue, 1)
+			if accepted then return accepted end
+			return nil, "timeout"
 		end
 		function listener:close() end
 		package.loaded.socket = { tcp4 = function() return listener end, gettime = function() return env.now end }
@@ -135,6 +136,18 @@ return function(root, pob1, pob2, scratch)
 		common.sha1 = common.sha1 or function() return "hash" end
 		env.main, env.tab, env.build, env.character = main, tab, build, character
 		env.bridge = assert(loadfile(root .. "\\scripts\\pob_import_bridge.lua"))(game)
+		function env:addPeer(chunks)
+			local peer = { chunks = chunks or {}, wire = "" }
+			function peer:settimeout(value) requireThat(value == 0, "Concurrent socket blocks UI") end
+			function peer:receive()
+				if self.disconnected then return nil, "closed", "" end
+				return nil, "timeout", table.remove(self.chunks, 1) or ""
+			end
+			function peer:send(text) self.wire = self.wire .. text; return #text end
+			function peer:close() self.closed = true end
+			table.insert(self.acceptQueue, peer)
+			return peer
+		end
 		function env:request(secret, requestedPath, command, requestedGame)
 			self.secret, self.requestedPath = secret or key, requestedPath or path
 			self.command, self.requestedGame = command or "IMPORT", requestedGame or game
@@ -189,6 +202,40 @@ return function(root, pob1, pob2, scratch)
 		requireThat(not env.wire:find("BridgeFixture", 1, true) and not env.wire:find("never-sent", 1, true)
 			and not env.wire:find(key, 1, true), "Private data in protocol")
 		requireThat(not env.bridge:IsBusy() and env.closed, "Busy lock/client leaked")
+		env = setup(game)
+		env:request(); env:begin()
+		local other = env:addPeer({ "PIC1 HELLO " .. game .. " " .. nonce .. "\n" })
+		env:tick()
+		local challenge = other.wire:match("^PIC1 CHALLENGE " .. nonce .. " ([0-9a-f]+) ")
+		requireThat(challenge, "HELLO blocked during an existing import")
+		local encoded = hex(path)
+		table.insert(other.chunks, "PIC1 " .. nonce .. " IMPORT " .. game .. " " .. challenge .. " " .. encoded
+			.. " " .. sha.hmac(sha.sha256, key, "IMPORT|" .. game .. "|" .. nonce .. "|" .. challenge .. "|" .. encoded) .. "\n")
+		env:tick()
+		requireThat(other.wire:find("ERROR BUSY", 1, true) and other.closed, "Concurrent import was not rejected")
+		requireThat(env.bridge:IsBusy() and #env.callbacks == 1 and #env.calls == 0
+			and (game == "poe1" and env.tab.oauthLoading or game == "poe2" and env.tab.charImportMode == "IMPORTING"),
+			"Rejected peer released or modified the active import")
+		local idle = env:addPeer()
+		env:tick(); idle.disconnected = true; env:tick()
+		requireThat(env.bridge:IsBusy() and idle.closed, "Unrelated disconnect released active import")
+		local held = {}
+		for i = 1, 7 do held[i] = env:addPeer({ "PIC1 HEL" }) end
+		env:tick()
+		local queued = env:addPeer({ "PIC1 HELLO " .. game .. " " .. nonce .. "\n" })
+		env:tick()
+		requireThat(queued.wire == "", "Connection limit did not bound stalled peers")
+		env.now = 6
+		env:tick(); env:tick()
+		requireThat(queued.wire:find("PIC1 CHALLENGE", 1, true) and env.bridge:IsBusy(),
+			"Expired peers blocked queued HELLO or released active import")
+		for _, stalled in ipairs(held) do requireThat(stalled.closed, "Fragmented peer did not expire") end
+		queued.disconnected = true; env:tick()
+		env:response()
+		requireThat(#env.calls == 0, "Concurrent download callback mutated off UI thread")
+		env:tick(); env:response(); env:tick(); env:tick()
+		requireThat(table.concat(env.calls, ",") == "TREE,ITEMS,SAVE" and env.wire:find("STATUS DONE", 1, true)
+			and not env.bridge:IsBusy(), "Concurrent peers lost the active callback or completion")
 		local replay = env.importLine
 		env = setup(game)
 		env.replayLine = replay
@@ -292,7 +339,7 @@ return function(root, pob1, pob2, scratch)
 	io.open = realOpen
 	package.loaded.socket = realSocket
 	-- Exercise real LuaSocket rather than only mocked receive/accept behavior.
-	do
+	for _, game in ipairs({ "poe1", "poe2" }) do
 		local listener
 		package.loaded.socket = { gettime = realSocket.gettime, tcp4 = function()
 			listener = assert(realSocket.tcp4())
@@ -310,8 +357,8 @@ return function(root, pob1, pob2, scratch)
 			end
 			return realOpen(file, mode)
 		end
-		GetScriptPath = function() return pob1 end
-		local bridge = assert(loadfile(root .. "\\scripts\\pob_import_bridge.lua"))("poe1")
+		GetScriptPath = function() return game == "poe1" and pob1 or pob2 end
+		local bridge = assert(loadfile(root .. "\\scripts\\pob_import_bridge.lua"))(game)
 		local main = { mode = "LIST", modes = {}, popups = {} }
 		bridge:Tick(main)
 		local _, port = listener:getsockname()
@@ -319,16 +366,37 @@ return function(root, pob1, pob2, scratch)
 			local peer = assert(realSocket.tcp4())
 			peer:settimeout(1)
 			assert(peer:connect("127.0.0.1", port))
-			assert(peer:send("PIC1 HELLO poe1 " .. nonce .. "\n"))
+			assert(peer:send("PIC1 HELLO " .. game .. " " .. nonce .. "\n"))
 			for frame = 1, 3 do bridge:Tick(main) end
 			local line, err = peer:receive("*l")
 			requireThat(line and line:match("^PIC1 CHALLENGE "), "Real LuaSocket HELLO failed: " .. tostring(err))
 			local challenge, signature = line:match("^PIC1 CHALLENGE " .. nonce .. " ([0-9a-f]+) ([0-9a-f]+)$")
-			requireThat(signature == sha.hmac(sha.sha256, key, "HELLO|poe1|" .. nonce .. "|" .. challenge),
+			requireThat(signature == sha.hmac(sha.sha256, key, "HELLO|" .. game .. "|" .. nonce .. "|" .. challenge),
 				"Real socket challenge signature failed")
 			peer:close()
 			for frame = 1, 3 do bridge:Tick(main) end
 		end
+		local idle = assert(realSocket.tcp4())
+		idle:settimeout(1)
+		assert(idle:connect("127.0.0.1", port))
+		for frame = 1, 3 do bridge:Tick(main) end
+		local fragmented = assert(realSocket.tcp4())
+		fragmented:settimeout(1)
+		assert(fragmented:connect("127.0.0.1", port))
+		assert(fragmented:send("PIC1 HEL"))
+		for frame = 1, 3 do bridge:Tick(main) end
+		local peer = assert(realSocket.tcp4())
+		peer:settimeout(1)
+		assert(peer:connect("127.0.0.1", port))
+		assert(peer:send("PIC1 HELLO " .. game .. " " .. nonce .. "\n"))
+		for frame = 1, 3 do bridge:Tick(main) end
+		local line, err = peer:receive("*l")
+		requireThat(line and line:match("^PIC1 CHALLENGE "), "Idle unrelated client blocked valid HELLO: " .. tostring(err))
+		requireThat(not bridge:IsBusy(), "Concurrent HELLO touched import state")
+		peer:close()
+		idle:close()
+		fragmented:close()
+		for frame = 1, 3 do bridge:Tick(main) end
 		listener:close()
 		io.open = realOpen
 		package.loaded.socket = realSocket

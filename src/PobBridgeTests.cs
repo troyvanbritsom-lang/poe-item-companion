@@ -126,6 +126,20 @@ namespace Poe2ItemCompanion
                         + "))('" + (game == GameId.Poe1 ? "poe1" : "poe2") + "');"
                         + "testBridge:Tick(testMain); local _,port=testListener:getsockname(); return tostring(port)";
                     int port = int.Parse(RunLua(state, setup));
+                    using (var idle = new TcpClient(AddressFamily.InterNetwork))
+                    {
+                        idle.Connect(IPAddress.Loopback, port);
+                        RunLua(state, "testBridge:Tick(testMain); return 'idle connected'");
+                        var timelyProbe = PobImportBridge.ProbeAsync(game, directory, port);
+                        var watch = System.Diagnostics.Stopwatch.StartNew();
+                        while (!timelyProbe.IsCompleted && watch.ElapsedMilliseconds < 2000)
+                        {
+                            RunLua(state, "testBridge:Tick(testMain); return 'ok'");
+                            System.Threading.Thread.Sleep(5);
+                        }
+                        Require(timelyProbe.IsCompleted, "Idle peer delayed the C# authenticated probe.");
+                        timelyProbe.GetAwaiter().GetResult();
+                    }
                     var probe = PobImportBridge.ProbeAsync(game, directory, port);
                     DateTime probeDeadline = DateTime.UtcNow.AddSeconds(10);
                     while (!probe.IsCompleted && DateTime.UtcNow < probeDeadline)
@@ -156,7 +170,7 @@ namespace Poe2ItemCompanion
                 }
                 finally { lua_close(state); }
             }
-            Console.WriteLine("PASSED: actual C# to LuaSocket authenticated exchange for both games on ephemeral ports, with build-less fixture refusal and no character API calls.");
+            Console.WriteLine("PASSED: actual C# to LuaSocket authenticated exchange for both games on ephemeral ports, including idle-peer isolation, build-less fixture refusal and no character API calls.");
         }
 
         private static void TestExistingBuild(GameId game, string path)
