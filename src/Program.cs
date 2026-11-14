@@ -43,6 +43,23 @@ namespace Poe2ItemCompanion
             if (args != null && args.Length > 0)
             {
                 string firstArg = args[0].ToLowerInvariant();
+                if (firstArg == "--probe-pob-bridge")
+                {
+                    if (!_requestedGame.HasValue)
+                    { Console.WriteLine("Specify --game poe1 or --game poe2 for the read-only probe."); return 1; }
+                    try
+                    {
+                        PobImportBridge.ProbeAsync(_requestedGame.Value, args.Length > 1
+                            ? Path.GetFullPath(args[1]) : GameIdentity.DefaultPobPath(_requestedGame.Value)).GetAwaiter().GetResult();
+                        Console.WriteLine("PASSED: authenticated PoB bridge handshake. No import command sent; no build or configuration changed.");
+                        return 0;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine("FAILED READ-ONLY PROBE: " + ex.Message);
+                        return 1;
+                    }
+                }
                 if (firstArg == "--test-ui") return UiTests.Run(args.Length > 1 ? Path.GetFullPath(args[1]) : null);
                 if (firstArg == "--test-pob-bridge") return PobBridgeTests.Run(
                     args.Length > 1 ? Path.GetFullPath(args[1]) : null, args.Length > 2 ? Path.GetFullPath(args[2]) : null);
@@ -117,6 +134,8 @@ namespace Poe2ItemCompanion
             Console.WriteLine("                                     Verify PoE1 gem purchase guidance and required levels");
             Console.WriteLine("  Poe2ItemCompanion.exe --test-pob-bridge [poe1-current.xml] [poe2-current.xml]");
             Console.WriteLine("                                     Verify local bridge and native imports with throwaway builds");
+            Console.WriteLine("  Poe2ItemCompanion.exe --probe-pob-bridge --game poe1|poe2 [installation-path]");
+            Console.WriteLine("                                     Read-only authenticated handshake; never sends IMPORT");
             Console.WriteLine("  Poe2ItemCompanion.exe --log        Open the companion diagnostic log file");
             Console.WriteLine("  Poe2ItemCompanion.exe --help       Show this help screen");
             Console.WriteLine();

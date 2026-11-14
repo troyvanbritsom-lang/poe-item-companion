@@ -65,6 +65,60 @@ namespace Poe2ItemCompanion
             return difference == 0;
         }
 
+        private static string ReadCredential(string pobPath, GameId game)
+        {
+            string keyPath = Path.Combine(pobPath, "Modules", "CompanionBridge.key");
+            if (!File.Exists(keyPath))
+                throw new InvalidOperationException("Bridge not installed for this PoB. Run scripts\\install-pob-bridge.ps1, then restart PoB.");
+            if (GameIdentity.DetectInstallation(pobPath) != game)
+                throw new InvalidOperationException("The selected PoB installation belongs to the other game.");
+            string token = File.ReadAllText(keyPath).Trim();
+            if (token.Length != 64 || !System.Text.RegularExpressions.Regex.IsMatch(token, "^[0-9a-f]{64}$"))
+                throw new InvalidDataException("Invalid bridge credential. Reinstall the bridge.");
+            return token;
+        }
+
+        private static string Authenticate(Stream stream, string game, string nonce, string token)
+        {
+            byte[] helloBytes = Encoding.ASCII.GetBytes("PIC1 HELLO " + game + " " + nonce + "\n");
+            stream.Write(helloBytes, 0, helloBytes.Length);
+            string[] hello = ReadLine(stream, 256, DateTime.UtcNow.AddSeconds(5)).Split(' ');
+            if (hello.Length != 5 || hello[0] != "PIC1" || hello[1] != "CHALLENGE" || hello[2] != nonce
+                || !System.Text.RegularExpressions.Regex.IsMatch(hello[3], "^[0-9a-f]{64}$")
+                || !EqualMac(hello[4], Mac(token, "HELLO|" + game + "|" + nonce + "|" + hello[3])))
+                throw new InvalidDataException("PoB bridge authentication failed. No import command was sent.");
+            return hello[3];
+        }
+
+        internal static Task ProbeAsync(GameId game, string pobPath, int? testPort = null)
+        {
+            return Task.Run(async () =>
+            {
+                string token = ReadCredential(pobPath, game);
+                string phase = "connecting";
+                try
+                {
+                    using (var client = new TcpClient(AddressFamily.InterNetwork))
+                    {
+                        var connect = client.ConnectAsync(IPAddress.Loopback, testPort ?? Port(game));
+                        if (await Task.WhenAny(connect, Task.Delay(3000)) != connect)
+                            throw new TimeoutException("PoB bridge connection timed out.");
+                        await connect;
+                        phase = "authenticating";
+                        client.SendTimeout = 3000;
+                        using (var stream = client.GetStream())
+                            Authenticate(stream, game == GameId.Poe1 ? "poe1" : "poe2", NewNonce(), token);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (!(ex is SocketException) && !(ex is IOException) && !(ex is TimeoutException)
+                        && !(ex is InvalidDataException)) throw;
+                    throw new PobBridgeConnectionException(phase, false, ex);
+                }
+            });
+        }
+
         internal static string Request(AppConfig config, string token, string nonce, string challenge)
         {
             if (string.IsNullOrWhiteSpace(config.CurrentBuildFilePath) || !string.IsNullOrEmpty(config.CurrentCharacterCode))
@@ -111,14 +165,7 @@ namespace Poe2ItemCompanion
                 CurrentBuildFilePath = config.CurrentBuildFilePath, CurrentCharacterCode = config.CurrentCharacterCode };
             return Task.Run(async () =>
             {
-                string keyPath = Path.Combine(snapshot.PobPath, "Modules", "CompanionBridge.key");
-                if (!File.Exists(keyPath))
-                    throw new InvalidOperationException("Bridge not installed for this PoB. Run scripts\\install-pob-bridge.ps1, then restart PoB.");
-                if (GameIdentity.DetectInstallation(snapshot.PobPath) != snapshot.Game)
-                    throw new InvalidOperationException("The selected PoB installation belongs to the other game.");
-                string token = File.ReadAllText(keyPath).Trim();
-                if (token.Length != 64 || !System.Text.RegularExpressions.Regex.IsMatch(token, "^[0-9a-f]{64}$"))
-                    throw new InvalidDataException("Invalid bridge credential. Reinstall the bridge.");
+                string token = ReadCredential(snapshot.PobPath, snapshot.Game);
                 string nonce = NewNonce();
                 Request(snapshot, token, nonce, nonce); // Validate Current before any network activity.
                 string game = snapshot.Game == GameId.Poe1 ? "poe1" : "poe2";
@@ -139,15 +186,8 @@ namespace Poe2ItemCompanion
                         client.SendTimeout = 3000;
                         using (var stream = client.GetStream())
                         {
-                            byte[] bytes = Encoding.ASCII.GetBytes("PIC1 HELLO " + game + " " + nonce + "\n");
-                            stream.Write(bytes, 0, bytes.Length);
-                            string[] hello = ReadLine(stream, 256, DateTime.UtcNow.AddSeconds(5)).Split(' ');
-                            if (hello.Length != 5 || hello[0] != "PIC1" || hello[1] != "CHALLENGE" || hello[2] != nonce
-                                || !System.Text.RegularExpressions.Regex.IsMatch(hello[3], "^[0-9a-f]{64}$")
-                                || !EqualMac(hello[4], Mac(token, "HELLO|" + game + "|" + nonce + "|" + hello[3])))
-                                throw new InvalidDataException("PoB bridge authentication failed. No import command was sent.");
-                            string challenge = hello[3];
-                            bytes = Encoding.ASCII.GetBytes(Request(snapshot, token, nonce, challenge));
+                            string challenge = Authenticate(stream, game, nonce, token);
+                            byte[] bytes = Encoding.ASCII.GetBytes(Request(snapshot, token, nonce, challenge));
                             phase = "sending the import request";
                             importMayHaveBeenSent = true;
                             stream.Write(bytes, 0, bytes.Length);
@@ -179,7 +219,8 @@ namespace Poe2ItemCompanion
                 }
                 catch (Exception ex)
                 {
-                    if (!(ex is SocketException) && !(ex is IOException) && !(ex is TimeoutException)) throw;
+                    if (!(ex is SocketException) && !(ex is IOException) && !(ex is TimeoutException)
+                        && !(ex is InvalidDataException)) throw;
                     throw new PobBridgeConnectionException(phase, importMayHaveBeenSent, ex);
                 }
             });

@@ -126,6 +126,17 @@ namespace Poe2ItemCompanion
                         + "))('" + (game == GameId.Poe1 ? "poe1" : "poe2") + "');"
                         + "testBridge:Tick(testMain); local _,port=testListener:getsockname(); return tostring(port)";
                     int port = int.Parse(RunLua(state, setup));
+                    var probe = PobImportBridge.ProbeAsync(game, directory, port);
+                    DateTime probeDeadline = DateTime.UtcNow.AddSeconds(10);
+                    while (!probe.IsCompleted && DateTime.UtcNow < probeDeadline)
+                    {
+                        RunLua(state, "testBridge:Tick(testMain); return 'ok'");
+                        System.Threading.Thread.Sleep(5);
+                    }
+                    Require(probe.IsCompleted, "Read-only native handshake did not finish.");
+                    probe.GetAwaiter().GetResult();
+                    Require(RunLua(state, "testBridge:Tick(testMain); return tostring(testBridge:IsBusy())") == "false",
+                        "Read-only probe started a build import.");
                     var config = new AppConfig { Game = game, PobPath = directory, CurrentBuildFilePath = file };
                     var import = PobImportBridge.ImportAtPortAsync(config, new Progress<string>(), port);
                     DateTime deadline = DateTime.UtcNow.AddSeconds(10);
@@ -272,6 +283,40 @@ namespace Poe2ItemCompanion
             {
                 Require(ex.Phase == "connecting" && !ex.ImportMayHaveBeenSent
                     && ex.Message.Contains("ConnectionRefused"), "Connection refusal lost safe pre-import diagnosis.");
+            }
+            foreach (bool authentic in new[] { true, false })
+            {
+                var listener = new TcpListener(IPAddress.Loopback, 0);
+                listener.Start();
+                try
+                {
+                    var server = Task.Run(() =>
+                    {
+                        using (var peer = listener.AcceptTcpClient())
+                        using (var stream = peer.GetStream())
+                        {
+                            peer.ReceiveTimeout = 5000;
+                            string[] fields = PobImportBridge.ReadLine(stream, 256).Split(' ');
+                            Require(fields.Length == 4 && fields[1] == "HELLO", "Read-only probe sent a non-HELLO command.");
+                            string challenge = PobImportBridge.NewNonce();
+                            string signature = authentic ? PobImportBridge.Mac(token,
+                                "HELLO|poe2|" + fields[3] + "|" + challenge) : new string('0', 64);
+                            byte[] answer = Encoding.ASCII.GetBytes("PIC1 CHALLENGE " + fields[3] + " " + challenge + " " + signature + "\n");
+                            stream.Write(answer, 0, answer.Length);
+                            Require(stream.ReadByte() == -1, "Read-only probe sent more data after HELLO.");
+                        }
+                    });
+                    var probe = PobImportBridge.ProbeAsync(GameId.Poe2, directory, ((IPEndPoint)listener.LocalEndpoint).Port);
+                    if (authentic) probe.GetAwaiter().GetResult();
+                    else
+                    {
+                        try { probe.GetAwaiter().GetResult(); throw new Exception("Read-only probe accepted forged challenge."); }
+                        catch (PobBridgeConnectionException ex)
+                        { Require(!ex.ImportMayHaveBeenSent && ex.Phase == "authenticating", "Probe incorrectly marked import as sent."); }
+                    }
+                    Require(server.Wait(5000), "Read-only mock peer did not finish.");
+                }
+                finally { listener.Stop(); }
             }
         }
     }
