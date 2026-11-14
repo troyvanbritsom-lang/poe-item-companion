@@ -231,6 +231,7 @@ namespace Poe2ItemCompanion
                 {
                     Layout(form, size);
                     CheckRows(form);
+                    AssertBridgeVisible(form);
                     var sample = Field<TextBox>(form, "_sampleItemBox");
                     var results = Field<Panel>(form, "_comparisonContainer");
                     Contained(sample);
@@ -291,8 +292,24 @@ namespace Poe2ItemCompanion
                 form.Scale(new SizeF(1.5f, 1.5f));
                 Application.DoEvents();
                 CheckRows(form);
+                AssertBridgeVisible(form);
                 form.Hide();
             }
+        }
+
+        internal static void AssertBridgeVisible(MainWindow form)
+        {
+            var button = Children(form).OfType<Button>().Single(c => c.Name == "PoB import bridge button");
+            Require(form.Text.Contains("PoB import bridge"), "Bridge window cannot be distinguished from another companion instance.");
+            Require(button.Visible && button.Width > 0 && button.Height > 0, "PoB import button is hidden or collapsed.");
+            var bounds = button.RectangleToScreen(button.ClientRectangle);
+            for (Control parent = button.Parent; parent != null; parent = parent.Parent)
+            {
+                Require(parent.RectangleToScreen(parent.ClientRectangle).Contains(bounds),
+                    "PoB import button is clipped by " + parent.Name + " at " + form.Size);
+            }
+            var center = new Point(button.Left + button.Width / 2, button.Top + button.Height / 2);
+            Require(button.Parent.GetChildAtPoint(center) == button, "Another control covers the PoB import button.");
         }
 
         private static BuildDetails Fixture(AppConfig config, bool guide)

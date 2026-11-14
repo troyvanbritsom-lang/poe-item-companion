@@ -394,6 +394,8 @@ namespace Poe2ItemCompanion
                 var engineField = typeof(TrayApplicationContext).GetField("_engine", flags);
                 var old = (MainWindow)field.GetValue(context);
                 var oldEngine = (PobLuaEngine)engineField.GetValue(context);
+                Application.DoEvents();
+                UiTests.AssertBridgeVisible(old);
                 foreach (GameId game in new[] { GameId.Poe1, GameId.Poe2, GameId.Poe1 })
                 {
                     if (game == GameId.Poe1)
@@ -408,12 +410,19 @@ namespace Poe2ItemCompanion
                     var engine = (PobLuaEngine)engineField.GetValue(context);
                     Require(old.IsDisposed && !oldEngine.IsInitialized && engine.Game == game && engine.IsBuildLoaded
                         && window.Text.Contains(GameIdentity.Name(game)), "UI switch did not dispose/recreate the correct profile engine/view.");
+                    foreach (var size in new[] { window.MinimumSize, new System.Drawing.Size(1240, 900) })
+                    {
+                        window.Size = size;
+                        window.PerformLayout();
+                        Application.DoEvents();
+                        UiTests.AssertBridgeVisible(window);
+                    }
                     old = window;
                     oldEngine = engine;
                 }
             }
             Require(original == null ? !File.Exists(path) : File.ReadAllBytes(path).SequenceEqual(original), "UI fixture wrote user configuration.");
-            Console.WriteLine("PASSED: repeated live dashboard/tray profile switches dispose old views/engines without changing user config.");
+            Console.WriteLine("PASSED: repeated dashboard/tray profile switches retain a visible, unclipped PoB import button at minimum/default sizes, recreate views/engines and preserve user config.");
         }
     }
 }

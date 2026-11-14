@@ -117,7 +117,7 @@ namespace Poe2ItemCompanion
 
         private void InitializeComponent()
         {
-            Text = _config.GameName + " Companion";
+            Text = _config.GameName + " Companion - PoB import bridge";
             Size = new Size(1240, 900);
             MinimumSize = new Size(960, 740);
             StartPosition = FormStartPosition.CenterScreen;
@@ -169,6 +169,7 @@ namespace Poe2ItemCompanion
             _useCharacterBtn = MakeButton("Use my character", 825, 41, 165, Color.FromArgb(110, 80, 30));
             _useCharacterBtn.Click += (s, e) => UseImportedCharacter();
             _pobImportBtn = MakeButton("Import via PoB", 0, 0, 130, Color.FromArgb(45, 90, 65));
+            _pobImportBtn.Name = "PoB import bridge button";
             _pobImportBtn.AccessibleName = "Import selected PoB character into Current";
             _pobImportBtn.Click += async (s, e) => await ImportViaPob();
             _sourceTips.SetToolTip(_pobImportBtn, "Import tree, jewels, items and skills using the character selected in PoB. Saves only the open build matching CURRENT.");

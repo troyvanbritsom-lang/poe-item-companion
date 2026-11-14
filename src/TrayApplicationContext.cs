@@ -42,7 +42,7 @@ namespace Poe2ItemCompanion
             _notifyIcon = new NotifyIcon
             {
                 Icon = SystemIcons.Shield, // standard system shield/gear icon
-                Text = _config.GameName + " Companion",
+                Text = _config.GameName + " - PoB bridge",
                 Visible = true
             };
             _notifyIcon.DoubleClick += (s, e) => ShowMainWindow();
@@ -395,7 +395,7 @@ Item Level: 82
             string error;
             if (!_engine.Initialize(_config.PobPath, AppConfig.GetWrapperScriptPath(), out error, _config.Game))
                 _notifyIcon.ShowBalloonTip(4000, "Game setup required", error, ToolTipIcon.Warning);
-            _notifyIcon.Text = _config.GameName + " Companion";
+            _notifyIcon.Text = _config.GameName + " - PoB bridge";
             RegisterConfiguredHotkey();
             _detectTimer.Start();
             ShowMainWindow();
