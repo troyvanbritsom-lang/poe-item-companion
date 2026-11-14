@@ -25,6 +25,11 @@ foreach ($entry in @(@{ Path = $Poe1Path; Game = 'poe1'; Port = 49171 }, @{ Path
     if (-not (Test-Path -LiteralPath (Join-Path $root 'lua\sha2.lua'))) {
         throw "Missing installed HMAC-SHA256 library at $root; no source files patched."
     }
+    $common = [IO.File]::ReadAllText((Join-Path $root 'Modules\Common.lua'))
+    if (-not $common.Contains('function coroutine._list()') -or
+        -not $common.Contains('active_coroutines[co] = true')) {
+        throw "Unsupported PoB coroutine tracking at $root; no source files patched."
+    }
     $expectedRoot = if ($entry.Game -eq 'poe1') { 'PathOfBuilding' } else { 'PathOfBuilding2' }
     if (-not $build.Contains('dbXML[1].elem ~= "' + $expectedRoot + '"')) { throw "Wrong game at $root" }
     $newline = if ($main.Contains("`r`n")) { "`r`n" } else { "`n" }
@@ -40,6 +45,10 @@ foreach ($entry in @(@{ Path = $Poe1Path; Game = 'poe1'; Port = 49171 }, @{ Path
     } elseif (-not $main.Contains('local companionBridge = LoadModule("Modules/CompanionBridge", "' + $entry.Game + '")') -or
         -not $main.Contains('companionBridge:Tick(self)')) {
         throw "Incomplete existing bridge hook at $mainPath; restore the original backup before reapplying."
+    }
+    if (-not $main.Contains('companionBridge:Shutdown()')) {
+        $anchor = 'function main:Shutdown()'
+        $main = Replace-Once $main $anchor ($anchor + $newline + "`tcompanionBridge:Shutdown()")
     }
     if (-not $build.Contains('-- Companion bridge: check disk write completion')) {
         $bn = if ($build.Contains("`r`n")) { "`r`n" } else { "`n" }

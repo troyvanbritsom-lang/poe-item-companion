@@ -6,13 +6,53 @@ local sha = require("sha2")
 local ffi = require("ffi")
 ffi.cdef[[long BCryptGenRandom(void *algorithm, unsigned char *buffer, unsigned long length, unsigned long flags);]]
 local crypto = ffi.load("bcrypt")
+ffi.cdef[[
+void *GetForegroundWindow(void);
+unsigned long GetWindowThreadProcessId(void *window, unsigned long *process);
+unsigned long GetCurrentProcessId(void);
+]]
+if not pcall(ffi.typeof, "PICBridgePoint") then
+	ffi.cdef[[
+	typedef struct { long x; long y; } PICBridgePoint;
+	int GetCursorPos(PICBridgePoint *point);
+	void *WindowFromPoint(PICBridgePoint point);
+	]]
+end
+local windows = ffi.load("user32")
+local kernel = ffi.load("kernel32")
+local processId = kernel.GetCurrentProcessId()
+local windowOwner = ffi.new("unsigned long[1]")
+local cursorPoint = ffi.new("PICBridgePoint[1]")
 local bridge = {}
 local server, activePeer
 local peers = {}
+local wake, stopped
 local lastListenAttempt = -10
 local maxPeers = 8
 local token
 local port = game == "poe1" and 49171 or 49172
+
+local function background()
+	windowOwner[0] = 0
+	windows.GetWindowThreadProcessId(windows.GetForegroundWindow(), windowOwner)
+	if windowOwner[0] == processId then return false end
+	assert(windows.GetCursorPos(cursorPoint) ~= 0, "Bridge cursor query failed")
+	windowOwner[0] = 0
+	windows.GetWindowThreadProcessId(windows.WindowFromPoint(cursorPoint[0]), windowOwner)
+	return windowOwner[0] ~= processId
+end
+
+local function keepFramesRunning()
+	if wake then
+		assert(coroutine.status(wake) == "suspended", "Bridge wake coroutine ended unexpectedly")
+		return
+	end
+	assert(type(coroutine._list) == "function", "Bridge requires PoB coroutine tracking")
+	-- SimpleGraphic skips background OnFrame unless Common tracks a yielded coroutine.
+	wake = coroutine.create(function() coroutine.yield() end)
+	assert(coroutine.resume(wake))
+	assert(coroutine._list()[wake], "Bridge wake coroutine was not registered")
+end
 
 local function mac(message)
 	return sha.hmac(sha.sha256, token, message)
@@ -266,6 +306,19 @@ function bridge:IsBusy()
 	return activePeer ~= nil
 end
 
+function bridge:Shutdown()
+	stopped = true
+	for _, peer in ipairs(peers) do closeClient(peer) end
+	peers = {}
+	if server then server:close(); server = nil end
+	if wake then
+		local thread = wake
+		wake = nil
+		if coroutine.status(thread) == "suspended" then assert(coroutine.resume(thread)) end
+	end
+	token = nil
+end
+
 local function tick(main)
 	local now = socket.gettime()
 	if not server then
@@ -310,10 +363,24 @@ local function tick(main)
 end
 
 function bridge:Tick(main)
+	if stopped then return end
+	if not pcall(keepFramesRunning) then
+		ConPrintf("Companion bridge wake initialization failed; reinstall the supported bridge.")
+		self:Shutdown()
+		return
+	end
 	if not pcall(tick, main) then
 		ConPrintf("Companion bridge listener failed; no further import/save will be attempted.")
 		for _, peer in ipairs(peers) do closeClient(peer) end
 		peers = {}
+	end
+	-- Preserve the native idle cadence without suspending socket/UI-thread servicing.
+	local ok = pcall(function()
+		if background() then socket.sleep(0.1) end
+	end)
+	if not ok then
+		ConPrintf("Companion bridge background pacing failed; no further import/save will be attempted.")
+		self:Shutdown()
 	end
 end
 

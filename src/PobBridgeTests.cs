@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
@@ -46,6 +47,7 @@ namespace Poe2ItemCompanion
             {
                 string root = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".."));
                 TestProtocol(directory);
+                TestInstaller(root, directory);
                 string pob1 = GameIdentity.DefaultPobPath(GameId.Poe1);
                 string pob2 = GameIdentity.DefaultPobPath(GameId.Poe2);
                 SetDllDirectory(pob1);
@@ -68,7 +70,7 @@ namespace Poe2ItemCompanion
                     Console.WriteLine("PASSED: " + result + " Lua assertions covering both games, UI-thread sequencing, loopback binding, authentication, invalid commands, build guards, option preservation, async errors, timeout/disconnect and fragmented I/O.");
                 }
                 finally { lua_close(state); }
-                TestNativeTransport(root, pob1, directory);
+                TestNativeTransport(root, directory);
                 Directory.SetCurrentDirectory(originalDirectory);
                 if (!string.IsNullOrEmpty(poe1Build)) TestExistingBuild(GameId.Poe1, poe1Build);
                 if (!string.IsNullOrEmpty(poe2Build)) TestExistingBuild(GameId.Poe2, poe2Build);
@@ -80,7 +82,8 @@ namespace Poe2ItemCompanion
             {
                 Directory.SetCurrentDirectory(originalDirectory);
                 foreach (string file in Directory.GetFiles(directory, "*", SearchOption.AllDirectories)) File.Delete(file);
-                foreach (string folder in Directory.GetDirectories(directory)) Directory.Delete(folder);
+                foreach (string folder in Directory.GetDirectories(directory, "*", SearchOption.AllDirectories)
+                    .OrderByDescending(path => path.Length)) Directory.Delete(folder);
                 Directory.Delete(directory);
             }
         }
@@ -96,10 +99,79 @@ namespace Poe2ItemCompanion
             return result;
         }
 
-        private static void TestNativeTransport(string root, string pob, string directory)
+        private static void TestInstaller(string root, string directory)
+        {
+            string[] paths = { Path.Combine(directory, "installer-poe1"), Path.Combine(directory, "installer-poe2") };
+            var originals = new System.Collections.Generic.Dictionary<string, string>();
+            var keyAcls = new System.Collections.Generic.Dictionary<string, string>();
+            for (int game = 0; game < paths.Length; game++)
+            {
+                string modules = Path.Combine(paths[game], "Modules");
+                Directory.CreateDirectory(modules);
+                Directory.CreateDirectory(Path.Combine(paths[game], "lua"));
+                string main = "LoadModule(\"GameVersions\")\nfunction main:Shutdown()\n\tself:CallMode(\"Shutdown\")\nend\n"
+                    + "function main:OnFrame()\n\tself.viewPort = { x = 0, y = 0, width = self.screenW, height = self.screenH }\nend\n";
+                string build = "dbXML[1].elem ~= \"" + (game == 0 ? "PathOfBuilding" : "PathOfBuilding2")
+                    + "\"\n\tfile:write(xmlText)\n\tfile:close()\n";
+                originals[paths[game]] = main;
+                File.WriteAllText(Path.Combine(modules, "Main.lua"), main);
+                File.WriteAllText(Path.Combine(modules, "Build.lua"), build);
+                File.Copy(Path.Combine(GameIdentity.DefaultPobPath(game == 0 ? GameId.Poe1 : GameId.Poe2),
+                    "Modules", "Common.lua"), Path.Combine(modules, "Common.lua"));
+                File.WriteAllText(Path.Combine(paths[game], "lua", "sha2.lua"), "");
+                File.WriteAllText(Path.Combine(modules, "CompanionBridge.key"), new string('a', 64) + "\n");
+                keyAcls[paths[game]] = File.GetAccessControl(Path.Combine(modules, "CompanionBridge.key"))
+                    .GetSecurityDescriptorSddlForm(System.Security.AccessControl.AccessControlSections.All);
+            }
+            string arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + Path.Combine(root, "scripts", "install-pob-bridge.ps1")
+                + "\" -Poe1Path \"" + paths[0] + "\" -Poe2Path \"" + paths[1] + "\"";
+            for (int pass = 0; pass < 3; pass++)
+            {
+                if (pass == 1)
+                    foreach (string path in paths)
+                    {
+                        string mainPath = Path.Combine(path, "Modules", "Main.lua");
+                        File.WriteAllText(mainPath, File.ReadAllText(mainPath).Replace("\tcompanionBridge:Shutdown()\n", ""));
+                    }
+                var start = new System.Diagnostics.ProcessStartInfo("powershell.exe", arguments) {
+                    UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true
+                };
+                using (var installer = System.Diagnostics.Process.Start(start))
+                {
+                    var output = installer.StandardOutput.ReadToEndAsync();
+                    var error = installer.StandardError.ReadToEndAsync();
+                    Require(installer.WaitForExit(15000), "Fixture installer did not finish.");
+                    Require(installer.ExitCode == 0, "Fixture installer failed: " + output.Result + error.Result);
+                }
+                for (int game = 0; game < paths.Length; game++)
+                {
+                    string modules = Path.Combine(paths[game], "Modules");
+                    string main = File.ReadAllText(Path.Combine(modules, "Main.lua"));
+                    Require(main.Split(new[] { "companionBridge:Shutdown()" }, StringSplitOptions.None).Length == 2
+                        && main.Contains("function main:Shutdown()\n\tcompanionBridge:Shutdown()"),
+                        "Installer missed or duplicated the shutdown hook.");
+                    Require(main.Split(new[] { "companionBridge:Tick(self)" }, StringSplitOptions.None).Length == 2,
+                        "Installer duplicated the frame hook.");
+                    Require(File.ReadAllText(Path.Combine(modules, "CompanionBridge.lua")) ==
+                        File.ReadAllText(Path.Combine(root, "scripts", "pob_import_bridge.lua")), "Wrong module installed in fixture.");
+                    Require(File.ReadAllText(Path.Combine(modules, "CompanionBridge.key")) == new string('a', 64) + "\n",
+                        "Fixture installer replaced an existing key.");
+                    Require(File.GetAccessControl(Path.Combine(modules, "CompanionBridge.key"))
+                        .GetSecurityDescriptorSddlForm(System.Security.AccessControl.AccessControlSections.All) == keyAcls[paths[game]],
+                        "Fixture installer changed key access permissions.");
+                    var backups = Directory.GetFiles(modules, "Main.lua.companion-backup-*");
+                    Require(backups.Length == pass + 1 && backups.Any(path => File.ReadAllText(path) == originals[paths[game]]),
+                        "Fixture installer missed a pre-write source backup.");
+                }
+            }
+            Console.WriteLine("PASSED: isolated installer fixtures for both games, pristine/old-hook upgrade, shutdown/reapply idempotence, backups and key/ACL preservation.");
+        }
+
+        private static void TestNativeTransport(string root, string directory)
         {
             foreach (GameId game in new[] { GameId.Poe1, GameId.Poe2 })
             {
+                string pob = GameIdentity.DefaultPobPath(game);
                 IntPtr state = luaL_newstate();
                 Require(state != IntPtr.Zero, "Could not create native socket fixture state.");
                 try
@@ -112,10 +184,21 @@ namespace Poe2ItemCompanion
                     string setup = "package.path = " + LuaString(pob + "\\lua\\?.lua;") + " .. package.path;"
                         + "package.cpath = " + LuaString(pob + "\\?.dll;") + " .. package.cpath;"
                         + "local socket = require('socket'); local realOpen = io.open;"
+                        + "local commonFile=assert(realOpen(" + LuaString(Path.Combine(pob, "Modules", "Common.lua")) + ",'r'));"
+                        + "local text=commonFile:read('*a'); commonFile:close();"
+                        + "local first=assert(text:find('-- Optimize coroutines',1,true));"
+                        + "local last=assert(text:find('-- Class library',first,true));"
+                        + "assert(loadstring(text:sub(first,last-1)))();"
+                        + "local ffi=require('ffi'); local realLoad=ffi.load;"
+                        + "ffi.load=function(name,...) if name=='kernel32' then return {GetCurrentProcessId=function() return 101 end} end;"
+                        + "if name=='user32' then return {GetForegroundWindow=function() return 202 end,"
+                        + "GetWindowThreadProcessId=function(window,owner) owner[0]=window; return 1 end,"
+                        + "GetCursorPos=function() return 1 end,WindowFromPoint=function() return 202 end} end;"
+                        + "return realLoad(name,...) end;"
                         + "io.open = function(path, mode) if path:match('CompanionBridge.key$') then return {"
                         + "read=function() return " + LuaString(token) + " end, close=function() end} end return realOpen(path,mode) end;"
                         + "GetScriptPath=function() return " + LuaString(pob) + " end; ConPrintf=function() end;"
-                        + "package.loaded.socket={gettime=socket.gettime,tcp4=function() testListener=assert(socket.tcp4()); return {"
+                        + "package.loaded.socket={gettime=socket.gettime,sleep=socket.sleep,tcp4=function() testListener=assert(socket.tcp4()); return {"
                         + "settimeout=function(_,n) return testListener:settimeout(n) end,"
                         + "bind=function(_,host) return testListener:bind(host,0) end,"
                         + "listen=function(_,n) return testListener:listen(n) end,"
@@ -124,17 +207,30 @@ namespace Poe2ItemCompanion
                         + "testMain={mode='LIST',modes={},popups={}};"
                         + "testBridge=assert(loadfile(" + LuaString(Path.Combine(root, "scripts", "pob_import_bridge.lua"))
                         + "))('" + (game == GameId.Poe1 ? "poe1" : "poe2") + "');"
+                        + "ffi.load=realLoad;"
+                        + "testFrame=function() local active=false; for thread in pairs(coroutine._list()) do "
+                        + "if coroutine.status(thread)=='suspended' then active=true end end;"
+                        + "if not active then return 'skipped' end; testBridge:Tick(testMain); return 'serviced' end;"
+                        + "assert(testFrame()=='skipped','Inactive fixture gate did not reproduce pre-wake suspension');"
                         + "testBridge:Tick(testMain); local _,port=testListener:getsockname(); return tostring(port)";
                     int port = int.Parse(RunLua(state, setup));
+                    var cadence = System.Diagnostics.Stopwatch.StartNew();
+                    double cpuBefore = System.Diagnostics.Process.GetCurrentProcess().TotalProcessorTime.TotalMilliseconds;
+                    for (int frame = 0; frame < 10; frame++)
+                        Require(RunLua(state, "return testFrame()") == "serviced", "Native coroutine gate suspended background servicing.");
+                    cadence.Stop();
+                    double cpuDelta = System.Diagnostics.Process.GetCurrentProcess().TotalProcessorTime.TotalMilliseconds - cpuBefore;
+                    Require(cadence.ElapsedMilliseconds >= 900 && cadence.ElapsedMilliseconds < 4000 && cpuDelta < 400,
+                        "Background fixture failed its 100ms idle cadence or CPU budget.");
                     using (var idle = new TcpClient(AddressFamily.InterNetwork))
                     {
                         idle.Connect(IPAddress.Loopback, port);
-                        RunLua(state, "testBridge:Tick(testMain); return 'idle connected'");
+                        RunLua(state, "return testFrame()");
                         var timelyProbe = PobImportBridge.ProbeAsync(game, directory, port);
                         var watch = System.Diagnostics.Stopwatch.StartNew();
                         while (!timelyProbe.IsCompleted && watch.ElapsedMilliseconds < 2000)
                         {
-                            RunLua(state, "testBridge:Tick(testMain); return 'ok'");
+                            Require(RunLua(state, "return testFrame()") == "serviced", "Background gate lost idle-peer wake.");
                             System.Threading.Thread.Sleep(5);
                         }
                         Require(timelyProbe.IsCompleted, "Idle peer delayed the C# authenticated probe.");
@@ -144,7 +240,7 @@ namespace Poe2ItemCompanion
                     DateTime probeDeadline = DateTime.UtcNow.AddSeconds(10);
                     while (!probe.IsCompleted && DateTime.UtcNow < probeDeadline)
                     {
-                        RunLua(state, "testBridge:Tick(testMain); return 'ok'");
+                        Require(RunLua(state, "return testFrame()") == "serviced", "Background gate lost handshake wake.");
                         System.Threading.Thread.Sleep(5);
                     }
                     Require(probe.IsCompleted, "Read-only native handshake did not finish.");
@@ -156,7 +252,7 @@ namespace Poe2ItemCompanion
                     DateTime deadline = DateTime.UtcNow.AddSeconds(10);
                     while (!import.IsCompleted && DateTime.UtcNow < deadline)
                     {
-                        RunLua(state, "testBridge:Tick(testMain); return 'ok'");
+                        Require(RunLua(state, "return testFrame()") == "serviced", "Background gate lost authenticated request wake.");
                         System.Threading.Thread.Sleep(5);
                     }
                     Require(import.IsCompleted, "Native transport handshake did not finish.");
@@ -166,11 +262,19 @@ namespace Poe2ItemCompanion
                         Require(ex.Message == PobImportBridge.ErrorText("BUILD"),
                             "C# to native LuaSocket authenticated exchange failed: " + ex.Message);
                     }
-                    RunLua(state, "testListener:close(); return 'closed'");
+                    Require(RunLua(state, "testBridge:Shutdown(); testBridge:Shutdown(); testBridge:Tick(testMain); return testFrame()") == "skipped",
+                        "Shutdown left a yielded wake or resurrected the listener.");
+                    using (var peer = new TcpClient(AddressFamily.InterNetwork))
+                    {
+                        try { peer.Connect(IPAddress.Loopback, port); throw new Exception("Shutdown left listener open."); }
+                        catch (SocketException) { }
+                    }
+                    Console.WriteLine("PASSED: " + GameIdentity.Name(game) + " background fixture: 10 frames in "
+                        + cadence.ElapsedMilliseconds + " ms, " + cpuDelta + " ms process CPU; shutdown restored native idle gate.");
                 }
                 finally { lua_close(state); }
             }
-            Console.WriteLine("PASSED: actual C# to LuaSocket authenticated exchange for both games on ephemeral ports, including idle-peer isolation, build-less fixture refusal and no character API calls.");
+            Console.WriteLine("PASSED: actual C# to LuaSocket authenticated exchange for both games behind the native coroutine/background gate predicate, including idle-peer isolation, build-less fixture refusal and no character API calls.");
         }
 
         private static void TestExistingBuild(GameId game, string path)

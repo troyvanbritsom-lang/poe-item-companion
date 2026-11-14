@@ -13,6 +13,16 @@ return function(root, pob1, pob2, scratch)
 		assert(value, message)
 		count = count + 1
 	end
+	local function loadTracking(pob)
+		local file = assert(realOpen(pob .. "\\Modules\\Common.lua", "r"))
+		local text = file:read("*a")
+		file:close()
+		local first = assert(text:find("-- Optimize coroutines", 1, true))
+		local last = assert(text:find("-- Class library", first, true))
+		assert(loadstring(text:sub(first, last - 1)))()
+	end
+	loadTracking(pob1)
+	local lastEnv
 	local function fixture(name)
 		return { name = name, class = "Witch", league = "Standard", level = 40,
 			equipment = {}, skills = {}, jewels = {}, passives = {
@@ -23,7 +33,20 @@ return function(root, pob1, pob2, scratch)
 	requireThat(sha.hmac(sha.sha256, "key", "The quick brown fox jumps over the lazy dog") ==
 		"f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8", "Lua HMAC-SHA256 interoperability vector failed")
 	local function setup(game, realBuild)
-		local env = { now = 0, wire = "", callbacks = {}, calls = {}, chunks = {} }
+		if lastEnv then lastEnv.bridge:Shutdown() end
+		local env = { now = 0, wire = "", callbacks = {}, calls = {}, chunks = {}, sleeps = {}, logs = {}, foreground = true }
+		local ffi = require("ffi")
+		local realLoad = ffi.load
+		ffi.load = function(name, ...)
+			if name == "kernel32" then return { GetCurrentProcessId = function() return 101 end } end
+			if name == "user32" then return {
+				GetForegroundWindow = function() return env.foreground and 101 or 202 end,
+				GetWindowThreadProcessId = function(window, owner) owner[0] = window; return 1 end,
+				GetCursorPos = function() return env.cursorError and 0 or 1 end,
+				WindowFromPoint = function() return env.hover and 101 or 202 end,
+			} end
+			return realLoad(name, ...)
+		end
 		local character = fixture("BridgeFixture")
 		local client = {}
 		function client:settimeout(value) requireThat(value == 0, "Socket must not block UI") end
@@ -42,6 +65,7 @@ return function(root, pob1, pob2, scratch)
 		local listener = {}
 		function listener:settimeout(value) requireThat(value == 0, "Listener must not block UI") end
 		function listener:bind(host, port)
+			env.bound = true
 			requireThat(host == "127.0.0.1", "Listener exposed to non-loopback interface")
 			requireThat(port == (game == "poe1" and 49171 or 49172), "Wrong game port")
 			return true
@@ -53,7 +77,11 @@ return function(root, pob1, pob2, scratch)
 			return nil, "timeout"
 		end
 		function listener:close() end
-		package.loaded.socket = { tcp4 = function() return listener end, gettime = function() return env.now end }
+		package.loaded.socket = { tcp4 = function() return listener end, gettime = function() return env.now end,
+			sleep = function(seconds)
+				requireThat(seconds == 0.1, "Background polling must retain native 100ms cadence")
+				table.insert(env.sleeps, seconds)
+			end }
 		io.open = function(file, mode)
 			if file:match("CompanionBridge.key$") then
 				return { read = function() return key end, close = function() return true end }
@@ -65,7 +93,7 @@ return function(root, pob1, pob2, scratch)
 			return { close = function() return true end }
 		end
 		GetScriptPath = function() return game == "poe1" and pob1 or pob2 end
-		ConPrintf = function() end
+		ConPrintf = function(message) env.logs[#env.logs + 1] = message end
 		local tab
 		local build
 		if realBuild then
@@ -136,6 +164,8 @@ return function(root, pob1, pob2, scratch)
 		common.sha1 = common.sha1 or function() return "hash" end
 		env.main, env.tab, env.build, env.character = main, tab, build, character
 		env.bridge = assert(loadfile(root .. "\\scripts\\pob_import_bridge.lua"))(game)
+		ffi.load = realLoad
+		lastEnv = env
 		function env:addPeer(chunks)
 			local peer = { chunks = chunks or {}, wire = "" }
 			function peer:settimeout(value) requireThat(value == 0, "Concurrent socket blocks UI") end
@@ -194,7 +224,61 @@ return function(root, pob1, pob2, scratch)
 	end
 
 	for _, game in ipairs({ "poe1", "poe2" }) do
+		if lastEnv then lastEnv.bridge:Shutdown(); lastEnv = nil end
+		loadTracking(game == "poe1" and pob1 or pob2)
 		local env = setup(game)
+		env.foreground = false
+		local function yielded()
+			local result = {}
+			for thread in pairs(coroutine._list()) do
+				if coroutine.status(thread) == "suspended" then result[#result + 1] = thread end
+			end
+			return result
+		end
+		requireThat(#yielded() == 0, "Fixture leaked a previous wake coroutine")
+		-- Native background gate would skip every callback after startup without a yielded coroutine.
+		env.bridge:Tick(env.main)
+		requireThat(#yielded() == 1, "Background bridge did not register exactly one native wake")
+		env.chunks = { "PIC1 HELLO " .. game .. " " .. nonce .. "\n" }
+		local frameCount = 0
+		for i = 1, 20 do
+			if env.foreground or env.hover or #yielded() > 0 then
+				env.bridge:Tick(env.main)
+				frameCount = frameCount + 1
+			end
+		end
+		requireThat(frameCount == 20 and env.wire:find("PIC1 CHALLENGE", 1, true),
+			"Native background frame gate prevented HELLO")
+		requireThat(#env.sleeps == 21 and #yielded() == 1, "Background busy-spin or coroutine leak")
+		env.hover = true; env.bridge:Tick(env.main)
+		requireThat(#env.sleeps == 21, "Cursor-over PoB was needlessly paced")
+		env.foreground = true; env.hover = false; env.bridge:Tick(env.main)
+		requireThat(#env.sleeps == 21, "Focused PoB was needlessly paced")
+		local thread = yielded()[1]
+		env.bridge:Shutdown(); env.bridge:Shutdown()
+		requireThat(env.closed and coroutine.status(thread) == "dead" and #yielded() == 0,
+			"Shutdown leaked client or native wake")
+		env.bridge:Tick(env.main)
+		requireThat(#yielded() == 0, "Shutdown bridge restarted itself")
+		env = setup(game)
+		env:request(); env:begin()
+		env.bridge:Shutdown(); env:response(); env.bridge:Tick(env.main)
+		requireThat(#env.calls == 0 and not env.bridge:IsBusy() and
+			(game == "poe1" and not env.tab.oauthLoading or game == "poe2" and env.tab.charImportMode == "SELECTCHAR"),
+			"Shutdown failed to release import state or ignored late callback")
+		env = setup(game)
+		env.foreground = false; env.cursorError = true
+		env.bridge:Tick(env.main)
+		requireThat(env.closed and #yielded() == 0 and #env.logs == 1, "Pacing error left an unbounded wake active or failed silently")
+		env = setup(game)
+		local registry = coroutine._list
+		coroutine._list = nil
+		env.bridge:Tick(env.main)
+		coroutine._list = registry
+		env.bridge:Tick(env.main)
+		requireThat(not env.bound and #env.logs == 1 and #yielded() == 0,
+			"Unsupported coroutine tracking started the listener or retried silently")
+		env = setup(game)
 		env:request()
 		env:complete()
 		requireThat(table.concat(env.calls, ",") == "TREE,ITEMS,SAVE", "Imports not sequential")
@@ -336,12 +420,14 @@ return function(root, pob1, pob2, scratch)
 		for i = 1, 300 do env:tick() end
 		requireThat(env.wire:find("STATUS DONE", 1, true) and env.closed, "Partial socket send lost acknowledgement")
 	end
+	lastEnv.bridge:Shutdown()
+	lastEnv = nil
 	io.open = realOpen
 	package.loaded.socket = realSocket
 	-- Exercise real LuaSocket rather than only mocked receive/accept behavior.
 	for _, game in ipairs({ "poe1", "poe2" }) do
 		local listener
-		package.loaded.socket = { gettime = realSocket.gettime, tcp4 = function()
+		package.loaded.socket = { gettime = realSocket.gettime, sleep = realSocket.sleep, tcp4 = function()
 			listener = assert(realSocket.tcp4())
 			local proxy = {}
 			function proxy:settimeout(value) return listener:settimeout(value) end
@@ -397,7 +483,11 @@ return function(root, pob1, pob2, scratch)
 		idle:close()
 		fragmented:close()
 		for frame = 1, 3 do bridge:Tick(main) end
-		listener:close()
+		bridge:Shutdown()
+		local after = assert(realSocket.tcp4())
+		after:settimeout(0.2)
+		requireThat(not after:connect("127.0.0.1", port), "Shutdown left the native listener reachable")
+		after:close()
 		io.open = realOpen
 		package.loaded.socket = realSocket
 	end
@@ -453,5 +543,6 @@ return function(root, pob1, pob2, scratch)
 		io.open = realOpen
 		package.loaded.socket = realSocket
 	end
+	if lastEnv then lastEnv.bridge:Shutdown() end
 	return count
 end
