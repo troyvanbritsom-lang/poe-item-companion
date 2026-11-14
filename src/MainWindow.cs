@@ -624,13 +624,16 @@ namespace Poe2ItemCompanion
             }
             catch (Exception ex)
             {
-                status = ex is System.Net.Sockets.SocketException
-                    ? "PoB bridge unavailable. Restart the patched PoB, authenticate and select a character."
-                    : ex.Message;
+                status = ex.Message;
                 // Do not include protocol, credentials, API payloads or paths in logs.
-                Logger.Warn("PoB import bridge did not complete (" + ex.GetType().Name + ").");
+                var connection = ex as PobBridgeConnectionException;
+                Logger.Warn("PoB import bridge did not complete (" + ex.GetType().Name
+                    + (connection == null ? "" : ", phase=" + connection.Phase
+                        + ", importMayHaveBeenSent=" + connection.ImportMayHaveBeenSent)
+                    + ")." + PobBridgeConnectionException.SocketDetail(ex));
                 if (!IsDisposed)
-                    MessageBox.Show(this, status + "\n\nIf an import started, PoB may contain unsaved changes. Inspect it before retrying.",
+                    MessageBox.Show(this, status + (connection != null && !connection.ImportMayHaveBeenSent ? ""
+                        : "\n\nIf an import started, PoB may contain unsaved changes. Inspect it before retrying."),
                         "PoB import", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             finally

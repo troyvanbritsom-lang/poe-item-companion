@@ -291,6 +291,48 @@ return function(root, pob1, pob2, scratch)
 	end
 	io.open = realOpen
 	package.loaded.socket = realSocket
+	-- Exercise real LuaSocket rather than only mocked receive/accept behavior.
+	do
+		local listener
+		package.loaded.socket = { gettime = realSocket.gettime, tcp4 = function()
+			listener = assert(realSocket.tcp4())
+			local proxy = {}
+			function proxy:settimeout(value) return listener:settimeout(value) end
+			function proxy:bind(host) return listener:bind(host, 0) end
+			function proxy:listen(backlog) return listener:listen(backlog) end
+			function proxy:accept() return listener:accept() end
+			function proxy:close() return listener:close() end
+			return proxy
+		end }
+		io.open = function(file, mode)
+			if file:match("CompanionBridge.key$") then
+				return { read = function() return key end, close = function() return true end }
+			end
+			return realOpen(file, mode)
+		end
+		GetScriptPath = function() return pob1 end
+		local bridge = assert(loadfile(root .. "\\scripts\\pob_import_bridge.lua"))("poe1")
+		local main = { mode = "LIST", modes = {}, popups = {} }
+		bridge:Tick(main)
+		local _, port = listener:getsockname()
+		for attempt = 1, 3 do
+			local peer = assert(realSocket.tcp4())
+			peer:settimeout(1)
+			assert(peer:connect("127.0.0.1", port))
+			assert(peer:send("PIC1 HELLO poe1 " .. nonce .. "\n"))
+			for frame = 1, 3 do bridge:Tick(main) end
+			local line, err = peer:receive("*l")
+			requireThat(line and line:match("^PIC1 CHALLENGE "), "Real LuaSocket HELLO failed: " .. tostring(err))
+			local challenge, signature = line:match("^PIC1 CHALLENGE " .. nonce .. " ([0-9a-f]+) ([0-9a-f]+)$")
+			requireThat(signature == sha.hmac(sha.sha256, key, "HELLO|poe1|" .. nonce .. "|" .. challenge),
+				"Real socket challenge signature failed")
+			peer:close()
+			for frame = 1, 3 do bridge:Tick(main) end
+		end
+		listener:close()
+		io.open = realOpen
+		package.loaded.socket = realSocket
+	end
 	local ffi = require("ffi")
 	ffi.cdef[[int _chdir(const char *path);]]
 	local crt = ffi.load("msvcrt")

@@ -8,6 +8,33 @@ using System.Threading.Tasks;
 
 namespace Poe2ItemCompanion
 {
+    internal sealed class PobBridgeConnectionException : IOException
+    {
+        internal string Phase { get; private set; }
+        internal bool ImportMayHaveBeenSent { get; private set; }
+
+        internal PobBridgeConnectionException(string phase, bool importMayHaveBeenSent, Exception inner)
+            : base("PoB bridge connection failed while " + phase + ". "
+                + (importMayHaveBeenSent
+                    ? "An import command may have reached PoB. Inspect the open build before retrying; import/save completion is unconfirmed."
+                    : "No import command was sent by this attempt. Check that PoB's window is responsive and the local bridge is reachable.")
+                + SocketDetail(inner), inner)
+        {
+            Phase = phase;
+            ImportMayHaveBeenSent = importMayHaveBeenSent;
+        }
+
+        internal static string SocketDetail(Exception error)
+        {
+            for (Exception current = error; current != null; current = current.InnerException)
+            {
+                var socket = current as SocketException;
+                if (socket != null) return " Socket: " + socket.SocketErrorCode + " (" + socket.NativeErrorCode + ").";
+            }
+            return error is TimeoutException ? " Timeout." : "";
+        }
+    }
+
     internal static class PobImportBridge
     {
         internal static int Port(GameId game) { return game == GameId.Poe1 ? 49171 : 49172; }
@@ -74,6 +101,11 @@ namespace Poe2ItemCompanion
 
         internal static Task ImportAsync(AppConfig config, IProgress<string> progress)
         {
+            return ImportAtPortAsync(config, progress, Port(config.Game));
+        }
+
+        internal static Task ImportAtPortAsync(AppConfig config, IProgress<string> progress, int port)
+        {
             // Capture the selected profile before leaving the UI thread.
             var snapshot = new AppConfig { Game = config.Game, PobPath = config.PobPath,
                 CurrentBuildFilePath = config.CurrentBuildFilePath, CurrentCharacterCode = config.CurrentCharacterCode };
@@ -91,49 +123,64 @@ namespace Poe2ItemCompanion
                 Request(snapshot, token, nonce, nonce); // Validate Current before any network activity.
                 string game = snapshot.Game == GameId.Poe1 ? "poe1" : "poe2";
                 progress.Report("Connecting to PoB...");
-                using (var client = new TcpClient(AddressFamily.InterNetwork))
+                string phase = "connecting";
+                bool importMayHaveBeenSent = false;
+                try
                 {
-                    var connect = client.ConnectAsync(IPAddress.Loopback, Port(snapshot.Game));
-                    if (await Task.WhenAny(connect, Task.Delay(3000)) != connect)
-                        throw new TimeoutException("PoB bridge is unavailable. Restart the patched PoB and leave its window running.");
-                    await connect;
-                    client.ReceiveTimeout = 5000;
-                    client.SendTimeout = 3000;
-                    using (var stream = client.GetStream())
+                    using (var client = new TcpClient(AddressFamily.InterNetwork))
                     {
-                        byte[] bytes = Encoding.ASCII.GetBytes("PIC1 HELLO " + game + " " + nonce + "\n");
-                        stream.Write(bytes, 0, bytes.Length);
-                        string[] hello = ReadLine(stream, 256, DateTime.UtcNow.AddSeconds(5)).Split(' ');
-                        if (hello.Length != 5 || hello[0] != "PIC1" || hello[1] != "CHALLENGE" || hello[2] != nonce
-                            || !System.Text.RegularExpressions.Regex.IsMatch(hello[3], "^[0-9a-f]{64}$")
-                            || !EqualMac(hello[4], Mac(token, "HELLO|" + game + "|" + nonce + "|" + hello[3])))
-                            throw new InvalidDataException("PoB bridge authentication failed. No import command was sent.");
-                        string challenge = hello[3];
-                        bytes = Encoding.ASCII.GetBytes(Request(snapshot, token, nonce, challenge));
-                        stream.Write(bytes, 0, bytes.Length);
-                        client.ReceiveTimeout = 120000;
-                        DateTime deadline = DateTime.UtcNow.AddSeconds(120);
-                        while (DateTime.UtcNow < deadline)
+                        var connect = client.ConnectAsync(IPAddress.Loopback, port);
+                        if (await Task.WhenAny(connect, Task.Delay(3000)) != connect)
+                            throw new TimeoutException("PoB bridge is unavailable. Keep PoB's window responsive and check local bridge reachability.");
+                        await connect;
+                        phase = "authenticating";
+                        progress.Report("Authenticating PoB bridge...");
+                        client.ReceiveTimeout = 5000;
+                        client.SendTimeout = 3000;
+                        using (var stream = client.GetStream())
                         {
-                            string line = ReadLine(stream, 256, deadline);
-                            string[] fields = line.Split(' ');
-                            if (fields.Length != 5 || fields[0] != "PIC1" || fields[1] != nonce
-                                || !EqualMac(fields[4], Mac(token, "STATUS|" + game + "|" + challenge + "|"
-                                    + string.Join(" ", fields, 0, 4))))
-                                throw new InvalidDataException("Untrusted or incompatible PoB bridge response.");
-                            if (fields[2] == "ERROR") throw new InvalidOperationException(ErrorText(fields[3]));
-                            if (fields[2] != "STATUS") throw new InvalidDataException("Invalid PoB bridge status.");
-                            switch (fields[3])
+                            byte[] bytes = Encoding.ASCII.GetBytes("PIC1 HELLO " + game + " " + nonce + "\n");
+                            stream.Write(bytes, 0, bytes.Length);
+                            string[] hello = ReadLine(stream, 256, DateTime.UtcNow.AddSeconds(5)).Split(' ');
+                            if (hello.Length != 5 || hello[0] != "PIC1" || hello[1] != "CHALLENGE" || hello[2] != nonce
+                                || !System.Text.RegularExpressions.Regex.IsMatch(hello[3], "^[0-9a-f]{64}$")
+                                || !EqualMac(hello[4], Mac(token, "HELLO|" + game + "|" + nonce + "|" + hello[3])))
+                                throw new InvalidDataException("PoB bridge authentication failed. No import command was sent.");
+                            string challenge = hello[3];
+                            bytes = Encoding.ASCII.GetBytes(Request(snapshot, token, nonce, challenge));
+                            phase = "sending the import request";
+                            importMayHaveBeenSent = true;
+                            stream.Write(bytes, 0, bytes.Length);
+                            phase = "waiting for import/save completion";
+                            client.ReceiveTimeout = 120000;
+                            DateTime deadline = DateTime.UtcNow.AddSeconds(120);
+                            while (DateTime.UtcNow < deadline)
                             {
-                                case "TREE": progress.Report("PoB: importing passive tree and jewels..."); break;
-                                case "ITEMS": progress.Report("PoB: importing equipment and skills..."); break;
-                                case "SAVE": progress.Report("PoB: saving the matching CURRENT build..."); break;
-                                case "DONE": return;
-                                default: throw new InvalidDataException("Unknown PoB bridge status.");
+                                string line = ReadLine(stream, 256, deadline);
+                                string[] fields = line.Split(' ');
+                                if (fields.Length != 5 || fields[0] != "PIC1" || fields[1] != nonce
+                                    || !EqualMac(fields[4], Mac(token, "STATUS|" + game + "|" + challenge + "|"
+                                        + string.Join(" ", fields, 0, 4))))
+                                    throw new InvalidDataException("Untrusted or incompatible PoB bridge response.");
+                                if (fields[2] == "ERROR") throw new InvalidOperationException(ErrorText(fields[3]));
+                                if (fields[2] != "STATUS") throw new InvalidDataException("Invalid PoB bridge status.");
+                                switch (fields[3])
+                                {
+                                    case "TREE": progress.Report("PoB: importing passive tree and jewels..."); break;
+                                    case "ITEMS": progress.Report("PoB: importing equipment and skills..."); break;
+                                    case "SAVE": progress.Report("PoB: saving the matching CURRENT build..."); break;
+                                    case "DONE": return;
+                                    default: throw new InvalidDataException("Unknown PoB bridge status.");
+                                }
                             }
+                            throw new TimeoutException("No completed PoB import acknowledgement. Inspect PoB before retrying.");
                         }
-                        throw new TimeoutException("No completed PoB import acknowledgement. Inspect PoB before retrying.");
                     }
+                }
+                catch (Exception ex)
+                {
+                    if (!(ex is SocketException) && !(ex is IOException) && !(ex is TimeoutException)) throw;
+                    throw new PobBridgeConnectionException(phase, importMayHaveBeenSent, ex);
                 }
             });
         }
