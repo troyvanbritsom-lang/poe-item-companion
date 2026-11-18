@@ -43,3 +43,5 @@ secrets*.json
 node_modules/
 Thumbs.db
 Desktop.ini
+!/poe_1_images/**/*.png
+!/poe_2_images/**/*.png
