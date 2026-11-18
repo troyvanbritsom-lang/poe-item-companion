@@ -108,8 +108,10 @@ end
     '<PathOfBuilding2/>' | Set-Content -LiteralPath $dummyBuild
     $buildHash = (Get-FileHash -LiteralPath $dummyBuild).Hash
     $configHash = (Get-FileHash -LiteralPath $config).Hash
-    Assert ((SetupWith 'app-only-upgrade' '') -eq 0) 'App-only upgrade failed.'
+    $poe1Backups = @(Get-ChildItem -LiteralPath (Split-Path -Parent $main1) -Filter '*.companion-backup-*').Count
+    Assert ((SetupWith 'app-only-upgrade' "/COMPANIONUPDATE=1 /POB1=`"$pob1`"") -eq 0) 'App-only upgrade failed.'
     Assert ((Get-FileHash -LiteralPath $config).Hash -eq $configHash) 'App-only upgrade modified existing settings.'
+    Assert (@(Get-ChildItem -LiteralPath (Split-Path -Parent $main1) -Filter '*.companion-backup-*').Count -eq $poe1Backups) 'In-app upgrade reapplied a PoB bridge.'
     Assert ((SetupWith 'reapply' $arguments) -eq 0) 'Bridge reapply failed.'
     Assert ((Select-String -LiteralPath $script:setupLog -Pattern 'PoB for PoE[12]: bridge installed\.').Count -eq 2) 'Reapplying the bridges did not succeed.'
     foreach ($key in $keyHashes.Keys) {

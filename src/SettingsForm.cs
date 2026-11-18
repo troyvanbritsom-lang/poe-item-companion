@@ -3,6 +3,7 @@ using System.IO;
 using System.Drawing;
 using System.Windows.Forms;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace Poe2ItemCompanion
 {
@@ -30,11 +31,29 @@ namespace Poe2ItemCompanion
         private Button _cancelBtn;
         private Button _testBtn;
         private Button _logBtn;
+        private Button _repairBridgeBtn, _checkBridgeBtn;
+        private Label _bridgeStatus;
+        private bool _bridgeBusy;
+        private readonly Func<string, bool> _confirmRepair;
+        private readonly Action<string, bool> _showBridgeResult;
+        private readonly Func<bool, GameId, string, Task> _runBridgeAction;
 
         public SettingsForm(AppConfig config, Action<AppConfig> onSaved)
+            : this(config, onSaved, null, null, null)
+        {
+        }
+
+        internal SettingsForm(AppConfig config, Action<AppConfig> onSaved, Func<string, bool> confirmRepair,
+            Action<string, bool> showBridgeResult, Func<bool, GameId, string, Task> runBridgeAction)
         {
             _config = config.Clone();
             _onSaved = onSaved;
+            _confirmRepair = confirmRepair ?? (text => MessageBox.Show(this, text, "Confirm PoB bridge repair",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.Yes);
+            _showBridgeResult = showBridgeResult ?? ((text, success) => MessageBox.Show(this, text, "PoB bridge",
+                MessageBoxButtons.OK, success ? MessageBoxIcon.Information : MessageBoxIcon.Warning));
+            _runBridgeAction = runBridgeAction ?? ((repair, game, path) => repair
+                ? PobBridgeRepair.RunAsync(game, path) : PobImportBridge.ProbeAsync(game, path));
             InitializeComponent();
             PopulateFields();
         }
@@ -246,6 +265,13 @@ namespace Poe2ItemCompanion
             sections.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             var paths = Section("BUILD SOURCES  /  " + _config.GameName);
             SettingRow(paths, "PoB directory", _pobPathBox, pobBrowse);
+            _repairBridgeBtn = new Button { Text = "Repair Bridge", AutoSize = true };
+            _checkBridgeBtn = new Button { Text = "Check Bridge", AutoSize = true };
+            _repairBridgeBtn.Click += async (s, e) => await RunBridgeActionAsync(true);
+            _checkBridgeBtn.Click += async (s, e) => await RunBridgeActionAsync(false);
+            SettingRow(paths, "PoB bridge", UiTheme.Actions(_repairBridgeBtn, _checkBridgeBtn), null);
+            _bridgeStatus = new Label { Text = "Uses the saved PoB directory above.", AutoSize = true, ForeColor = UiTheme.Muted };
+            SettingRow(paths, "", _bridgeStatus, null);
             SettingRow(paths, "Build directory", _buildDirectoryBox, directoryBrowse);
             _gemIconDirectoryBox = new TextBox { AccessibleName = "Local gem image directory" };
             var iconsBrowse = new Button { Text = "Browse..." };
@@ -308,6 +334,65 @@ namespace Poe2ItemCompanion
             _cancelBtn.DialogResult = DialogResult.Cancel;
             UiTheme.Apply(this);
             UiTheme.Emphasize(_saveBtn);
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            base.OnFormClosing(e);
+            if (_bridgeBusy && e.CloseReason == CloseReason.UserClosing) e.Cancel = true;
+        }
+
+        private async Task RunBridgeActionAsync(bool repair)
+        {
+            if (_bridgeBusy) return;
+            string folder;
+            try
+            {
+                if (!string.Equals(_pobPathBox.Text.Trim(), (_config.PobPath ?? "").Trim(), StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("Save & Apply the PoB directory change, then reopen Settings before using bridge actions.");
+                folder = PobBridgeRepair.TargetFolder(_config.PobPath);
+            }
+            catch (Exception ex)
+            {
+                _showBridgeResult(ex.Message, false);
+                return;
+            }
+
+            string target = _config.GameName + " Path of Building:\n" + folder;
+            if (repair && !_confirmRepair("Repair only this installation?\n\n" + target
+                + "\n\nSave your work and close this PoB instance first. Leave it closed until repair finishes. "
+                + "This updates bridge files, keeps source backups, and does not import, save a build, or restart PoB."))
+                return;
+
+            string result;
+            bool success = false;
+            _bridgeBusy = true;
+            _saveBtn.Enabled = _cancelBtn.Enabled = _testBtn.Enabled = _repairBridgeBtn.Enabled = _checkBridgeBtn.Enabled = false;
+            _bridgeStatus.Text = repair ? "Repairing PoB bridge..." : "Checking the authenticated PoB handshake...";
+            try
+            {
+                await _runBridgeAction(repair, _config.Game, folder);
+                success = true;
+                result = repair
+                    ? "Bridge files updated. Source backups are in the Modules folder. Reopen this PoB yourself, then click Check Bridge. Authentication has not yet been verified."
+                    : "Authenticated HELLO handshake verified. This check did not import or save a build.";
+            }
+            catch (Exception ex)
+            {
+                var connection = ex as PobBridgeConnectionException;
+                result = repair ? "Repair failed: " + ex.Message : "Bridge not verified. Open this PoB and make sure it responds, then check again.\n\n"
+                    + (connection == null ? ex.Message : connection.Message + "\n" + connection.InnerException.Message);
+            }
+            finally
+            {
+                _bridgeBusy = false;
+                if (!IsDisposed)
+                    _saveBtn.Enabled = _cancelBtn.Enabled = _testBtn.Enabled = _repairBridgeBtn.Enabled = _checkBridgeBtn.Enabled = true;
+            }
+            if (IsDisposed) return;
+            _bridgeStatus.Text = !success ? (repair ? "Repair failed." : "Bridge not verified.")
+                : (repair ? "Restart PoB, then click Check Bridge." : "Authenticated handshake verified.");
+            _showBridgeResult(target + "\n\n" + result, success);
         }
 
         private static TableLayoutPanel Section(string title)

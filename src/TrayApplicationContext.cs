@@ -4,6 +4,7 @@ using System.IO;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
+using System.Diagnostics;
 
 namespace Poe2ItemCompanion
 {
@@ -23,6 +24,8 @@ namespace Poe2ItemCompanion
         private OverlayFeature _passiveFeature;
         private Timer _detectTimer;
         private bool _checkingUpdates;
+        private bool _downloadingUpdate;
+        private bool _exiting;
 
         public TrayApplicationContext(AppConfig config)
         {
@@ -84,42 +87,8 @@ namespace Poe2ItemCompanion
             // Create and show Main Window on launch
             _mainWindow = new MainWindow(_config, _engine, _hotkeyManager, _notifyIcon, UpdateContextMenu, OpenSettings, SwitchGame);
             _mainWindow.Show();
-            _mainWindow.BeginInvoke(new Action(() => CheckForUpdates(false)));
-        }
-
-        private async void CheckForUpdates(bool manual)
-        {
-            if (_checkingUpdates)
-            {
-                if (manual) MessageBox.Show("An update check is already running.", "Companion updates");
-                return;
-            }
-            _checkingUpdates = true;
-            try
-            {
-                var update = await ReleaseUpdates.CheckAsync();
-                if (update == null)
-                {
-                    if (manual) MessageBox.Show("No newer stable release is available. You are running v" +
-                        ReleaseUpdates.CurrentVersion + ".", "Companion updates");
-                }
-                else if (MessageBox.Show("Version " + update.ToString(3) + " is available. You are running v" +
-                    ReleaseUpdates.CurrentVersion + ".\n\nOpen the official GitHub release page?",
-                    "Companion update available", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
-                {
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(ReleaseUpdates.ReleasePage(update))
-                    {
-                        UseShellExecute = true
-                    });
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error("Could not check or open the official companion release.", ex);
-                if (manual) MessageBox.Show("Could not check or open the GitHub release. Try again later.\n\n" +
-                    ex.Message, "Companion updates", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            }
-            finally { _checkingUpdates = false; }
+            if (ReleaseUpdates.IsInstalledBuild)
+                _mainWindow.BeginInvoke(new Action(() => CheckForUpdates(false)));
         }
 
         public void ShowMainWindow()
@@ -282,7 +251,7 @@ namespace Poe2ItemCompanion
             settingsItem.Click += (s, e) => OpenSettings();
             menu.Items.Add(settingsItem);
 
-            var updatesItem = new ToolStripMenuItem("Check for updates... (v" + ReleaseUpdates.CurrentVersion + ")");
+            var updatesItem = new ToolStripMenuItem("Check for updates...");
             updatesItem.Click += (s, e) => CheckForUpdates(true);
             menu.Items.Add(updatesItem);
 
@@ -291,13 +260,95 @@ namespace Poe2ItemCompanion
             menu.Items.Add(logItem);
 
             var exitItem = new ToolStripMenuItem("Exit");
-            exitItem.Click += (s, e) => ExitApp();
+            exitItem.Click += (s, e) =>
+            {
+                if (_downloadingUpdate)
+                    _notifyIcon.ShowBalloonTip(3000, "Companion update", "Wait for the installer download and verification to finish.", ToolTipIcon.Info);
+                else ExitApp();
+            };
             menu.Items.Add(exitItem);
 
             UiTheme.ApplyMenu(menu);
             var previous = _notifyIcon.ContextMenuStrip;
             _notifyIcon.ContextMenuStrip = menu;
             if (previous != null) previous.Dispose();
+        }
+
+        private bool UpdateCanCloseApp()
+        {
+            return !_isComparing && (_mainWindow == null || !_mainWindow.IsBusy)
+                && !Application.OpenForms.Cast<Form>().Any(form => form.Modal);
+        }
+
+        private async void CheckForUpdates(bool manual)
+        {
+            const string title = "Companion updates";
+            if (_exiting) return;
+            if (_checkingUpdates)
+            {
+                if (manual) _notifyIcon.ShowBalloonTip(3000, title, "An update check or download is already running.", ToolTipIcon.Info);
+                return;
+            }
+            _checkingUpdates = true;
+            ReleaseUpdates.Release release = null;
+            string stage = null;
+            try
+            {
+                release = await ReleaseUpdates.CheckAsync();
+                if (_exiting) return;
+                if (release == null)
+                {
+                    if (manual) MessageBox.Show("No newer stable GitHub release was found.", title);
+                    return;
+                }
+                if (!manual && !UpdateCanCloseApp())
+                {
+                    _notifyIcon.ShowBalloonTip(5000, title, release.Tag + " is available. Use Check for updates when you're ready.", ToolTipIcon.Info);
+                    return;
+                }
+                if (!ReleaseUpdates.IsInstalledBuild || !release.CanInstall)
+                {
+                    string reason = !ReleaseUpdates.IsInstalledBuild ? "This checkout won't update itself."
+                        : "GitHub did not provide a verifiable installer for this release.";
+                    if (MessageBox.Show(release.Tag + " is available. " + reason + "\n\nOpen its official GitHub release page?",
+                        title, MessageBoxButtons.YesNo, MessageBoxIcon.Information, MessageBoxDefaultButton.Button2) == DialogResult.Yes)
+                        using (Process.Start(new ProcessStartInfo(release.Page) { UseShellExecute = true })) { }
+                    return;
+                }
+                if (!UpdateCanCloseApp())
+                {
+                    MessageBox.Show("Finish the current operation or close Settings before updating.", title);
+                    return;
+                }
+                if (MessageBox.Show("Install " + release.Tag + "?\n\nThe Companion will download and verify Setup, then exit and apply the update. "
+                    + "Your settings and Path of Building installations will not be changed by Setup.",
+                    title, MessageBoxButtons.YesNo, MessageBoxIcon.Information, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+                    return;
+                _notifyIcon.ShowBalloonTip(4000, title, "Downloading " + release.Tag + " in the background.", ToolTipIcon.Info);
+                _downloadingUpdate = true;
+                stage = await ReleaseUpdates.StageAsync(release);
+                if (_exiting) return;
+                if (!UpdateCanCloseApp())
+                {
+                    MessageBox.Show("The installer was verified, but a Companion operation is still open. Finish it and try again.", title);
+                    return;
+                }
+                ReleaseUpdates.LaunchHelper(stage, release);
+                stage = null;
+                ExitApp();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Companion update check or download failed.", ex);
+                if (!_exiting && (manual || release != null))
+                    MessageBox.Show("The update could not be prepared:\n" + ex.Message, title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            finally
+            {
+                if (stage != null) ReleaseUpdates.Discard(stage, release);
+                _downloadingUpdate = false;
+                _checkingUpdates = false;
+            }
         }
 
         private void OnHotkeyPressed()
@@ -536,6 +587,7 @@ Item Level: 82
 
         private void ExitApp()
         {
+            _exiting = true;
             _notifyIcon.Visible = false;
             ExitThread();
         }

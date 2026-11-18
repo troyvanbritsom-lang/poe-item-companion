@@ -49,7 +49,7 @@ namespace Poe2ItemCompanion
             {
                 string root = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".."));
                 TestProtocol(directory);
-                TestInstaller(root, directory);
+                TestInstaller(directory);
                 if (fixturesOnly) return 0;
                 string pob1 = GameIdentity.DefaultPobPath(GameId.Poe1);
                 string pob2 = GameIdentity.DefaultPobPath(GameId.Poe2);
@@ -102,95 +102,159 @@ namespace Poe2ItemCompanion
             return result;
         }
 
-        private static void TestInstaller(string root, string directory)
+        public static int RunRepairFixtures()
         {
-            string[] paths = { Path.Combine(directory, "installer-poe1"), Path.Combine(directory, "installer-poe2") };
-            var originals = new System.Collections.Generic.Dictionary<string, string>();
-            var keyAcls = new System.Collections.Generic.Dictionary<string, string>();
+            string directory = Path.Combine(Path.GetTempPath(), "Companion Bridge Repair-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            try { TestInstaller(directory); return 0; }
+            catch (Exception ex) { Console.WriteLine("FAILED BRIDGE REPAIR: " + ex); return 1; }
+            finally { Directory.Delete(directory, true); }
+        }
+
+        private static string MakeInstall(string directory, string name, GameId game)
+        {
+            string path = Path.Combine(directory, name);
+            string modules = Path.Combine(path, "Modules");
+            Directory.CreateDirectory(modules);
+            Directory.CreateDirectory(Path.Combine(path, "lua"));
+            File.WriteAllText(Path.Combine(modules, "Main.lua"), "LoadModule(\"GameVersions\")\nfunction main:Shutdown()\n\tself:CallMode(\"Shutdown\")\nend\n"
+                + "function main:OnFrame()\n\tself.viewPort = { x = 0, y = 0, width = self.screenW, height = self.screenH }\nend\n");
+            File.WriteAllText(Path.Combine(modules, "Build.lua"), "dbXML[1].elem ~= \"" + (game == GameId.Poe1 ? "PathOfBuilding" : "PathOfBuilding2")
+                + "\"\n\tfile:write(xmlText)\n\tfile:close()\n");
+            File.WriteAllText(Path.Combine(modules, "Common.lua"), "active_coroutines[co] = true\nfunction coroutine._list()\nend\n");
+            File.WriteAllText(Path.Combine(path, "lua", "sha2.lua"), "-- fixture module");
+            File.WriteAllText(Path.Combine(path, "test build.xml"), "untouched build fixture");
+            return path;
+        }
+
+        private static void RefuseRepair(GameId game, string path, string expected)
+        {
+            try { PobBridgeRepair.RunAsync(game, path).GetAwaiter().GetResult(); }
+            catch (IOException ex)
+            {
+                Require(ex.Message.IndexOf(expected, StringComparison.OrdinalIgnoreCase) >= 0,
+                    "Expected rejection for " + expected + ", got: " + ex.Message);
+                return;
+            }
+            throw new InvalidOperationException("Repair accepted a fixture that should fail: " + expected);
+        }
+
+        private static void TestInstaller(string directory)
+        {
+            string[] paths = { MakeInstall(directory, "PoB 1 [offline] & fixture's", GameId.Poe1),
+                MakeInstall(directory, "PoB 2 (offline)", GameId.Poe2) };
             for (int game = 0; game < paths.Length; game++)
             {
+                var gameId = game == 0 ? GameId.Poe1 : GameId.Poe2;
                 string modules = Path.Combine(paths[game], "Modules");
-                Directory.CreateDirectory(modules);
-                Directory.CreateDirectory(Path.Combine(paths[game], "lua"));
-                string main = "LoadModule(\"GameVersions\")\nfunction main:Shutdown()\n\tself:CallMode(\"Shutdown\")\nend\n"
-                    + "function main:OnFrame()\n\tself.viewPort = { x = 0, y = 0, width = self.screenW, height = self.screenH }\nend\n";
-                string build = "dbXML[1].elem ~= \"" + (game == 0 ? "PathOfBuilding" : "PathOfBuilding2")
-                    + "\"\n\tfile:write(xmlText)\n\tfile:close()\n";
-                originals[paths[game]] = main;
-                File.WriteAllText(Path.Combine(modules, "Main.lua"), main);
-                File.WriteAllText(Path.Combine(modules, "Build.lua"), build);
-                File.WriteAllText(Path.Combine(modules, "Common.lua"),
-                    "function coroutine._list()\nend\nactive_coroutines[co] = true\n");
-                File.WriteAllText(Path.Combine(paths[game], "lua", "sha2.lua"), "");
+                string mainPath = Path.Combine(modules, "Main.lua");
                 string keyPath = Path.Combine(modules, "CompanionBridge.key");
-                File.WriteAllText(keyPath, new string('a', 64) + "\n");
-                var acl = new System.Security.AccessControl.FileSecurity();
-                acl.SetAccessRuleProtection(true, false);
-                acl.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(
-                    System.Security.Principal.WindowsIdentity.GetCurrent().User,
-                    System.Security.AccessControl.FileSystemRights.FullControl,
-                    System.Security.AccessControl.AccessControlType.Allow));
-                File.SetAccessControl(keyPath, acl);
-                keyAcls[paths[game]] = File.GetAccessControl(keyPath)
-                    .GetSecurityDescriptorSddlForm(System.Security.AccessControl.AccessControlSections.All);
-            }
-            string arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + Path.Combine(root, "scripts", "install-pob-bridge.ps1")
-                + "\" -Poe1Path \"" + paths[0] + "\" -Poe2Path \"" + paths[1] + "\"";
-            for (int pass = 0; pass < 3; pass++)
-            {
-                if (pass == 1)
-                    foreach (string path in paths)
+                string buildPath = Path.Combine(modules, "Build.lua");
+                string originalMain = File.ReadAllText(mainPath);
+                string originalBuild = File.ReadAllText(buildPath);
+                string otherModules = Path.Combine(paths[1 - game], "Modules");
+                string[] otherFiles = Directory.GetFiles(otherModules).OrderBy(p => p).ToArray();
+                string otherMain = File.ReadAllText(Path.Combine(otherModules, "Main.lua"));
+                string otherBuild = File.ReadAllText(Path.Combine(otherModules, "Build.lua"));
+                RefuseRepair(game == 0 ? GameId.Poe2 : GameId.Poe1, paths[game], "Wrong game");
+                File.WriteAllText(mainPath, originalMain.Replace("LoadModule(\"GameVersions\")", "-- unexpected new loader"));
+                RefuseRepair(gameId, paths[game], "Unsupported PoB source");
+                File.WriteAllText(mainPath, originalMain);
+                using (File.Open(buildPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                    RefuseRepair(gameId, paths[game], "locked or not writable");
+                Require(Directory.GetFiles(modules).Length == 3 && File.ReadAllText(mainPath) == originalMain
+                    && File.ReadAllText(buildPath) == originalBuild, "Rejected repair wrote to the target.");
+                if (game == 0)
+                {
+                    string launcher = Path.Combine(paths[game], "fixture launcher.exe");
+                    File.Copy(Path.Combine(Environment.SystemDirectory, "ping.exe"), launcher);
+                    try
                     {
-                        string mainPath = Path.Combine(path, "Modules", "Main.lua");
-                        File.WriteAllText(mainPath, File.ReadAllText(mainPath).Replace("\tcompanionBridge:Shutdown()\n", ""));
+                        using (var running = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(launcher, "-n 6 127.0.0.1")
+                        { UseShellExecute = false, CreateNoWindow = true }))
+                        {
+                            try { RefuseRepair(gameId, paths[game], "Close the running PoB"); }
+                            finally { running.WaitForExit(); }
+                        }
                     }
-                var start = new System.Diagnostics.ProcessStartInfo("powershell.exe", arguments) {
-                    UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true
-                };
-                using (var installer = System.Diagnostics.Process.Start(start))
-                {
-                    var output = installer.StandardOutput.ReadToEndAsync();
-                    var error = installer.StandardError.ReadToEndAsync();
-                    Require(installer.WaitForExit(15000), "Fixture installer did not finish.");
-                    Require(installer.ExitCode == 0, "Fixture installer failed: " + output.Result + error.Result);
+                    finally { File.Delete(launcher); }
+                    Require(Directory.GetFiles(modules).Length == 3, "Running-instance refusal wrote to the target.");
                 }
-                for (int game = 0; game < paths.Length; game++)
+                PobBridgeRepair.RunAsync(gameId, paths[game] + "\\").GetAwaiter().GetResult();
+                Require(File.GetAccessControl(keyPath).AreAccessRulesProtected, "New fixture credential inherited folder access.");
+                var keyWriteTime = File.GetLastWriteTimeUtc(keyPath);
+                var keyAcl = File.GetAccessControl(keyPath).GetSecurityDescriptorSddlForm(System.Security.AccessControl.AccessControlSections.All);
+                File.WriteAllText(mainPath, File.ReadAllText(mainPath).Replace("\tcompanionBridge:Shutdown()\n", ""));
+                PobBridgeRepair.RunAsync(gameId, paths[game]).GetAwaiter().GetResult();
                 {
-                    string modules = Path.Combine(paths[game], "Modules");
-                    string main = File.ReadAllText(Path.Combine(modules, "Main.lua"));
+                    string main = File.ReadAllText(mainPath);
                     Require(main.Split(new[] { "companionBridge:Shutdown()" }, StringSplitOptions.None).Length == 2
                         && main.Contains("function main:Shutdown()\n\tcompanionBridge:Shutdown()"),
                         "Installer missed or duplicated the shutdown hook.");
                     Require(main.Split(new[] { "companionBridge:Tick(self)" }, StringSplitOptions.None).Length == 2,
                         "Installer duplicated the frame hook.");
+                    Require(main.Contains("LoadModule(\"Modules/CompanionBridge\", \"" + (game == 0 ? "poe1" : "poe2") + "\")"),
+                        "Installer selected the wrong game hook.");
                     Require(File.ReadAllText(Path.Combine(modules, "CompanionBridge.lua")) ==
-                        File.ReadAllText(Path.Combine(root, "scripts", "pob_import_bridge.lua")), "Wrong module installed in fixture.");
-                    Require(File.ReadAllText(Path.Combine(modules, "CompanionBridge.key")) == new string('a', 64) + "\n",
-                        "Fixture installer replaced an existing key.");
-                    Require(File.GetAccessControl(Path.Combine(modules, "CompanionBridge.key"))
-                        .GetSecurityDescriptorSddlForm(System.Security.AccessControl.AccessControlSections.All) == keyAcls[paths[game]],
-                        "Fixture installer changed key access permissions.");
-                    var backups = Directory.GetFiles(modules, "Main.lua.companion-backup-*");
-                    Require(backups.Length == pass + 1 && backups.Any(path => File.ReadAllText(path) == originals[paths[game]]),
-                        "Fixture installer missed a pre-write source backup.");
+                        File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts", "pob_import_bridge.lua")),
+                        "Wrong module installed in fixture.");
+                    Require(File.GetLastWriteTimeUtc(keyPath) == keyWriteTime && File.GetAccessControl(keyPath)
+                        .GetSecurityDescriptorSddlForm(System.Security.AccessControl.AccessControlSections.All) == keyAcl,
+                        "Fixture installer changed the existing credential metadata.");
+                    Require(Directory.GetFiles(modules, "Main.lua.companion-backup-*").Any(p => File.ReadAllText(p) == originalMain)
+                        && Directory.GetFiles(modules, "Build.lua.companion-backup-*").Any(p => File.ReadAllText(p) == originalBuild)
+                        && Directory.GetFiles(modules, "CompanionBridge.lua.companion-backup-*").Length == 1,
+                        "Missing pre-write source backups.");
+                }
+                Require(Directory.GetFiles(modules, "*.companion-stage-*").Length == 0, "Staging files were left behind.");
+                Require(File.ReadAllText(Path.Combine(paths[game], "test build.xml")) == "untouched build fixture", "Repair touched a build.");
+                Require(otherFiles.SequenceEqual(Directory.GetFiles(otherModules).OrderBy(p => p))
+                    && File.ReadAllText(Path.Combine(otherModules, "Main.lua")) == otherMain
+                    && File.ReadAllText(Path.Combine(otherModules, "Build.lua")) == otherBuild,
+                    "Targeted repair touched the other game.");
+            }
+            TestRepairRollback(MakeInstall(directory, "PoB 2 rollback fixture", GameId.Poe2));
+            Console.WriteLine("PASSED: isolated repairs for both games; spaced/special-character paths; wrong-game, unsupported, locked and running-instance refusals; late-failure rollback, backups, credential metadata, reapply, and no unrelated writes.");
+        }
+
+        private static void TestRepairRollback(string path)
+        {
+            string modules = Path.Combine(path, "Modules");
+            string mainPath = Path.Combine(modules, "Main.lua");
+            string buildPath = Path.Combine(modules, "Build.lua");
+            var originalMain = File.ReadAllBytes(mainPath);
+            var originalBuild = File.ReadAllBytes(buildPath);
+            var locked = new TaskCompletionSource<FileStream>();
+            using (var watcher = new FileSystemWatcher(modules, "Main.lua.companion-backup-*"))
+            {
+                watcher.Created += (s, e) =>
+                {
+                    // Allow backup and integrity reads, but deny replacement after the module and Build.lua are applied.
+                    try
+                    {
+                        var stream = File.Open(mainPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                        if (!locked.TrySetResult(stream)) stream.Dispose();
+                    }
+                    catch (IOException ex) { locked.TrySetException(ex); }
+                };
+                watcher.EnableRaisingEvents = true;
+                try
+                {
+                    RefuseRepair(GameId.Poe2, path, "no bridge changes remain");
+                    Require(locked.Task.Wait(3000), "Rollback fixture never acquired its late lock.");
+                    Require(File.ReadAllBytes(mainPath).SequenceEqual(originalMain)
+                        && File.ReadAllBytes(buildPath).SequenceEqual(originalBuild)
+                        && !File.Exists(Path.Combine(modules, "CompanionBridge.lua"))
+                        && !File.Exists(Path.Combine(modules, "CompanionBridge.key"))
+                        && Directory.GetFiles(modules, "*.companion-stage-*").Length == 0,
+                        "Rollback did not restore original sources or remove files added during repair.");
+                }
+                finally
+                {
+                    watcher.EnableRaisingEvents = false;
+                    if (locked.Task.Status == TaskStatus.RanToCompletion) locked.Task.Result.Dispose();
                 }
             }
-            string poe1Main = Path.Combine(paths[0], "Modules", "Main.lua");
-            string poe1Before = File.ReadAllText(poe1Main);
-            int poe1Backups = Directory.GetFiles(Path.GetDirectoryName(poe1Main), "*.companion-backup-*").Length;
-            using (var installer = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
-                "powershell.exe", arguments + " -Game poe2") { UseShellExecute = false, CreateNoWindow = true,
-                RedirectStandardOutput = true, RedirectStandardError = true }))
-            {
-                var output = installer.StandardOutput.ReadToEndAsync();
-                var error = installer.StandardError.ReadToEndAsync();
-                Require(installer.WaitForExit(15000) && installer.ExitCode == 0,
-                    "PoE2-only fixture install failed: " + output.Result + error.Result);
-            }
-            Require(File.ReadAllText(poe1Main) == poe1Before && Directory.GetFiles(
-                Path.GetDirectoryName(poe1Main), "*.companion-backup-*").Length == poe1Backups,
-                "PoE2-only installation touched the other game.");
-            Console.WriteLine("PASSED: isolated installer fixtures for both games, pristine/old-hook upgrade, shutdown/reapply idempotence, backups and key/ACL preservation.");
         }
 
         private static void TestNativeTransport(string root, string directory)

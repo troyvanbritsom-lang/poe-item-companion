@@ -4,6 +4,8 @@ using System.Linq;
 using System.Drawing;
 using System.Windows.Forms;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Diagnostics;
 
 namespace Poe2ItemCompanion
 {
@@ -16,6 +18,7 @@ namespace Poe2ItemCompanion
         private Action _onBuildChanged;
         private Action _openSettings;
         private Action<GameId> _switchGame;
+        private readonly Action<string> _openBuildSite;
         public bool IsBusy { get; private set; }
 
         // Build source controls
@@ -74,6 +77,13 @@ namespace Poe2ItemCompanion
         private readonly ToolTip _sourceTips = new ToolTip();
 
         public MainWindow(AppConfig config, PobLuaEngine engine, HotkeyManager hotkeyManager, NotifyIcon notifyIcon, Action onBuildChanged, Action openSettings, Action<GameId> switchGame = null)
+            : this(config, engine, hotkeyManager, notifyIcon, onBuildChanged, openSettings, switchGame,
+                url => Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }))
+        {
+        }
+
+        internal MainWindow(AppConfig config, PobLuaEngine engine, HotkeyManager hotkeyManager, NotifyIcon notifyIcon,
+            Action onBuildChanged, Action openSettings, Action<GameId> switchGame, Action<string> openBuildSite)
         {
             _config = config;
             _engine = engine;
@@ -82,6 +92,7 @@ namespace Poe2ItemCompanion
             _onBuildChanged = onBuildChanged;
             _openSettings = openSettings;
             _switchGame = switchGame;
+            _openBuildSite = openBuildSite;
 
             InitializeComponent();
             Disposed += (s, e) => _sourceTips.Dispose();
@@ -254,7 +265,7 @@ namespace Poe2ItemCompanion
             _buildDropdown.AccessibleName = "Current character file";
             sources.Controls.Add(_shareCodeBox, 1, 0);
             sources.Controls.Add(_buildDropdown, 1, 1);
-            sources.Controls.Add(UiTheme.Actions(_pasteShareBtn, _loadShareBtn, guideFile), 2, 0);
+            sources.Controls.Add(UiTheme.Actions(_pasteShareBtn, _loadShareBtn, guideFile, CreateFindBuildsButton()), 2, 0);
             sources.Controls.Add(UiTheme.Actions(_refreshBuildsBtn, _browseBuildBtn, _reloadBuildBtn, _useCharacterBtn), 2, 1);
             var options = UiTheme.Actions(_pobImportBtn, currentCode, _autoReloadCheck, _autoDetectCheck);
             _autoReloadCheck.Margin = _autoDetectCheck.Margin = new Padding(16, 8, 0, 0);
@@ -552,6 +563,35 @@ namespace Poe2ItemCompanion
         }
 
         // ---------------- Build source handling ----------------
+
+        private Button CreateFindBuildsButton()
+        {
+            var button = new Button { Name = "FindBuildsButton", Text = "Find builds \u25BE", AccessibleName = "Find builds", AutoSize = true, Height = 27 };
+            var menu = new ContextMenuStrip { ShowImageMargin = false };
+            AddBuildSite(menu, "Mobalytics - build guides", "https://mobalytics.gg/poe/builds", "https://mobalytics.gg/poe-2/builds");
+            AddBuildSite(menu, "Maxroll - build guides", "https://maxroll.gg/poe/build-guides", "https://maxroll.gg/poe2/build-guides");
+            AddBuildSite(menu, "poe.ninja - popular builds", "https://poe.ninja/poe1/builds", "https://poe.ninja/poe2/builds");
+            button.ContextMenuStrip = menu;
+            button.Click += (s, e) => menu.Show(button, new Point(0, button.Height));
+            button.Disposed += (s, e) => menu.Dispose();
+            _sourceTips.SetToolTip(button, "Browse builds for the selected game in your browser.");
+            return button;
+        }
+
+        private void AddBuildSite(ContextMenuStrip menu, string title, string poe1Url, string poe2Url)
+        {
+            menu.Items.Add(new ToolStripMenuItem(title, null, (s, e) =>
+            {
+                string url = _config.Game == GameId.Poe1 ? poe1Url : poe2Url;
+                try { _openBuildSite(url); }
+                catch (Win32Exception ex)
+                {
+                    Logger.Error("Could not open build site: " + url, ex);
+                    MessageBox.Show(this, "Couldn't open the default browser. You can visit:\n" + url,
+                        "Find builds", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            }));
+        }
 
         private void LoadShareCodeFromBox()
         {

@@ -46,6 +46,8 @@ Companion game at the top of the dashboard.
   Guide file... for a local guide. The Build tab shows your guide; it does
   not replace your Current character. A guide is optional for comparisons.
   Keep the Current and Guide XML files separate if you use the bridge.
+  Use Find builds beside the guide field to browse Mobalytics, Maxroll,
+  or poe.ninja for your selected game without changing either build.
 
 4. Compare an item and open overlays
 ------------------------------------
@@ -80,16 +82,14 @@ tab. Then click Import via PoB in the companion or choose Update character
 from the overlay selector. The bridge does not sign in or choose the
 character for you. If an import fails, check PoB before retrying.
 
-A PoB update can remove the bridge hook. Save and close PoB, rerun the
-companion installer, select only the affected PoB folder, and restart PoB
-after a successful result. If Setup cannot write to a protected folder,
-use a writable PoB installation under your own Windows account or leave
-the bridge disabled. If Setup says the PoB version is unsupported, do not
-force the patch; load Current manually instead.
+A PoB update can remove the bridge hook. Save and close the affected PoB,
+then select Repair Bridge in the companion's Settings. Confirm the game
+and saved PoB folder. Reopen PoB after repair and select Check Bridge to
+verify the connection. Do not force a repair if the hooks are unsupported.
 
 The companion checks GitHub for stable releases in the background when it
 starts. For a manual check, right-click the companion's system tray icon
-and select Check for updates.... If a newer version is available, you can
-open the release page yourself. Nothing downloads or runs automatically.
-Exit the companion before installing an update. Leave the PoB fields blank
-unless you want to reapply a bridge.
+and select Check for updates. Confirm to download and verify the official
+Windows installer. The companion exits before Setup runs. App updates
+keep your settings and leave Path of Building untouched. Install v1.5.0
+manually once to enable in-app updates for later versions.

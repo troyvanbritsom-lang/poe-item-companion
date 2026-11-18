@@ -13,6 +13,7 @@ namespace Poe2ItemCompanion
         [STAThread]
         public static int Main(string[] args)
         {
+            if (args != null && args.Length > 0 && args[0] == "--apply-release-update") return ReleaseUpdates.Apply(args);
             UiTheme.EnableDpiAwareness();
             // Set up global exception handling to capture any unexpected failures
             AppDomain.CurrentDomain.UnhandledException += (s, e) =>
@@ -43,7 +44,8 @@ namespace Poe2ItemCompanion
             if (args != null && args.Length > 0)
             {
                 string firstArg = args[0].ToLowerInvariant();
-                if (firstArg == "--test-updates") return ReleaseUpdates.Test();
+                if (firstArg == "--test-updates") return ReleaseUpdateTests.Run(args.Length > 1 && args[1] == "--live");
+                if (firstArg == "--test-bridge-repair") return PobBridgeTests.RunRepairFixtures();
                 if (firstArg == "--setup-pob-profile")
                 {
                     if (!_requestedGame.HasValue || args.Length != 2) return 1;

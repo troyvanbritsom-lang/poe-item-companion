@@ -159,6 +159,13 @@ var
   I: Integer;
   Choice, Detail: String;
 begin
+  if ExpandConstant('{param:COMPANIONUPDATE|0}') = '1' then
+  begin
+    GameDirs[0] := '';
+    GameDirs[1] := '';
+    Result := True;
+    Exit;
+  end;
   Result := False;
   for I := 0 to 1 do
   begin

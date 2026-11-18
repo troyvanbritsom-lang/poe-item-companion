@@ -17,7 +17,9 @@ if not exist "%CSC%" (
 if not exist "bin" mkdir "bin"
 if not exist "bin\scripts" mkdir "bin\scripts"
 
-echo Copying Lua scripts to bin\scripts...
+echo Copying bundled scripts to bin\scripts...
+copy /Y "scripts\install-pob-bridge.ps1" "bin\scripts\install-pob-bridge.ps1" >nul || exit /b 1
+copy /Y "scripts\pob_import_bridge.lua" "bin\scripts\pob_import_bridge.lua" >nul || exit /b 1
 copy /Y "scripts\pob_wrapper.lua" "bin\scripts\pob_wrapper.lua" >nul || exit /b 1
 if not exist "bin\data" mkdir "bin\data"
 copy /Y "data\ggg_passive_ids.tsv" "bin\data\ggg_passive_ids.tsv" >nul || exit /b 1

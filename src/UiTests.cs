@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace Poe2ItemCompanion
@@ -305,7 +306,15 @@ namespace Poe2ItemCompanion
         private static void TestSettings(AppConfig config, string screenshots)
         {
             string originalPath = config.PobPath;
-            using (var form = new SettingsForm(config, c => { throw new InvalidOperationException("Settings unexpectedly saved."); }))
+            int confirmations = 0, calls = 0;
+            bool approve = false, wasRepair = false, success = false;
+            string confirmation = null, result = null, target = null;
+            GameId selectedGame = default(GameId);
+            var pending = new TaskCompletionSource<bool>();
+            using (var form = new SettingsForm(config, c => { throw new InvalidOperationException("Settings unexpectedly saved."); },
+                text => { confirmation = text; confirmations++; return approve; },
+                (text, ok) => { result = text; success = ok; },
+                (repair, game, path) => { calls++; wasRepair = repair; selectedGame = game; target = path; return pending.Task; }))
             {
                 form.Show();
                 foreach (var size in new[] { form.MinimumSize, new Size(760, 720), new Size(960, 780) })
@@ -321,7 +330,33 @@ namespace Poe2ItemCompanion
                 }
                 Layout(form, new Size(760, 720));
                 Capture(form, screenshots, config.Game + "-settings");
+                var repairBtn = Field<Button>(form, "_repairBridgeBtn");
+                var checkBtn = Field<Button>(form, "_checkBridgeBtn");
+                repairBtn.PerformClick();
+                Require(confirmations == 1 && calls == 0 && confirmation.Contains(config.GameName)
+                    && confirmation.Contains(originalPath), "Repair confirmation failed to identify the target or did not honor Cancel.");
+                approve = true;
+                repairBtn.PerformClick();
+                Require(calls == 1 && wasRepair && selectedGame == config.Game && target == originalPath,
+                    "Repair button did not route to the saved selected-game folder.");
+                form.Close();
+                Require(!form.IsDisposed && !repairBtn.Enabled && !checkBtn.Enabled && !Field<Button>(form, "_saveBtn").Enabled,
+                    "Settings allowed closing or another action during repair.");
+                pending.SetResult(true);
+                Application.DoEvents();
+                Require(success && repairBtn.Enabled && checkBtn.Enabled && result.Contains("Authentication has not yet been verified"),
+                    "Repair result did not require a separate check or left Settings busy.");
+                pending = new TaskCompletionSource<bool>();
+                checkBtn.PerformClick();
+                Require(calls == 2 && !wasRepair && selectedGame == config.Game && target == originalPath && confirmations == 2,
+                    "Check Bridge button did not route to the read-only action.");
+                pending.SetResult(true);
+                Application.DoEvents();
+                Require(success && result.Contains("Authenticated HELLO"), "Check Bridge result missing.");
                 Field<TextBox>(form, "_pobPathBox").Text = "edited test copy";
+                repairBtn.PerformClick();
+                Require(!success && result.Contains("Save & Apply") && confirmations == 2 && calls == 2,
+                    "Repair accepted an unsaved directory change.");
                 Require(Field<TextBox>(form, "_gemIconDirectoryBox").Text == config.GemIconDirectory, "Gem directory setting was not populated.");
                 Field<TextBox>(form, "_gemIconDirectoryBox").Text = "edited icon path";
                 Require(config.GemIconDirectory != "edited icon path", "Gem directory edits leaked into active profile.");
@@ -348,8 +383,9 @@ namespace Poe2ItemCompanion
 
         private static void TestDashboard(AppConfig config, string screenshots)
         {
+            var openedBuildSites = new List<string>();
             using (var engine = new PobLuaEngine())
-            using (var form = new MainWindow(config, engine, null, null, null, null))
+            using (var form = new MainWindow(config, engine, null, null, null, null, null, openedBuildSites.Add))
             {
                 form.Show();
                 foreach (var size in new[] { form.MinimumSize, new Size(1080, 760), new Size(1440, 960) })
@@ -370,6 +406,25 @@ namespace Poe2ItemCompanion
                 Require(tabs.SelectedIndex == 1, "Dark tabs lost native arrow-key navigation.");
                 tabs.SelectedIndex = 0;
                 Require(Field<TextBox>(form, "_shareCodeBox").MaxLength == 0, "Guide code capacity changed.");
+                var findBuilds = Children(form).OfType<Button>().Single(b => b.Name == "FindBuildsButton");
+                var guideCode = Field<TextBox>(form, "_shareCodeBox");
+                var originalCode = guideCode.Text;
+                var originalGuide = config.GetBuildSourceDisplay();
+                var currentPath = config.CurrentBuildFilePath;
+                guideCode.Text = "unsaved guide text";
+                findBuilds.PerformClick();
+                var buildSites = findBuilds.ContextMenuStrip;
+                Require(buildSites.Visible && buildSites.Items.Count == 3 && openedBuildSites.Count == 0,
+                    "Find builds should open a three-site menu, not a browser.");
+                foreach (ToolStripMenuItem site in buildSites.Items) site.PerformClick();
+                buildSites.Close();
+                var expectedSites = config.Game == GameId.Poe1
+                    ? new[] { "https://mobalytics.gg/poe/builds", "https://maxroll.gg/poe/build-guides", "https://poe.ninja/poe1/builds" }
+                    : new[] { "https://mobalytics.gg/poe-2/builds", "https://maxroll.gg/poe2/build-guides", "https://poe.ninja/poe2/builds" };
+                Require(openedBuildSites.SequenceEqual(expectedSites), "Find builds did not open the correct sites for the selected game.");
+                Require(guideCode.Text == "unsaved guide text" && config.GetBuildSourceDisplay() == originalGuide
+                    && config.CurrentBuildFilePath == currentPath, "Browsing builds changed a build source.");
+                guideCode.Text = originalCode;
                 var info = new BuildInfo { Success = true, CharacterName = "Fixture character", ClassName = "Witch",
                     AscendClassName = "Infernalist", Level = 72, MainSkill = "Fireball", Baseline = new Dictionary<string, double> {
                         { "Life", 2480 }, { "EnergyShield", 980 }, { "TotalDPS", 125400 }, { "TotalEHP", 18000 }, { "FireResist", 75 }, { "ColdResist", 75 }, { "LightningResist", 75 } } };

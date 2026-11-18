@@ -12,11 +12,13 @@ Download `PoE-Item-Companion-Setup-v<version>-x64.exe` from the [official GitHub
 
 Save and close any PoB you want to connect before running Setup. On **Path of Building bridges (optional)**, browse to the installation root for each game you use, or leave either field blank to skip it. Setup checks the game and supported patch points, then shows a separate result for each bridge. If PoB is in a protected folder that Setup cannot write to, use a writable PoB installation under the same Windows account or leave the bridge disabled; the companion can still calculate with a compatible PoB configured in Settings. Restart PoB yourself after a successful bridge setup.
 
-The app checks for stable releases in the background on startup. Right-click its tray icon and choose **Check for updates** to check again or see your version. If a newer release is available, the app offers to open GitHub in your browser. It never downloads or runs the update. Exit the companion before running a newer installer. Leave the PoB fields blank on upgrades to keep the current profile paths and avoid reapplying bridges.
+The installed app checks for stable releases at startup. Right-click its tray icon and choose **Check for updates** to check again. After you confirm, it downloads the official Windows installer, verifies its SHA-256 against GitHub release metadata, and exits before applying the update. App updates leave your settings and PoB installations alone. Install v1.5.0 manually once to enable in-app updates for later releases.
 
 Installed settings, logs, exports and captures are kept in `%LOCALAPPDATA%\PoeItemCompanion\UserData`. Portable builds still use their own folder. The installer does not migrate or delete portable data; you can point the new copy at the same build files in Settings. Windows **Installed apps** removes the installed companion and shortcuts but leaves user data and PoB builds. It also leaves installed PoB hooks intact; see the bridge removal instructions below.
 
 ## Game support and profiles
+
+Use **Find builds** beside **GUIDE code / link** to open Mobalytics, Maxroll, or poe.ninja for your selected game. This only opens your browser and does not change your Guide or Current build.
 
 | Feature | PoE1 | PoE2 |
 |---|---|---|
@@ -101,7 +103,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-pob-bridge
 
 Pass `-Poe1Path`, `-Poe2Path`, or both. Add `-ValidateOnly` to check compatibility without applying the bridge. If you use the script directly, set the same paths in the companion's game-specific Settings. Restart each PoB after installing. In its Import/Export tab, authenticate and select the intended character once. Open your saved character build in PoB and choose **that same XML file** as the companion's Current source. Afterwards, **Import via PoB** performs the sequence without coordinate automation or tree-overwrite dialogs. The explicit button authorizes replacement using the existing import checkboxes; it does not authenticate, choose a character, open another build, or accept Save As dialogs for you.
 
-For a targeted repair after a game update, add `-Game poe2` (or `-Game poe1`) to leave the other installation untouched. Updates can remove the Main/Build hooks while leaving the bridge module/key behind; the module alone does not establish an active bridge.
+After a PoB update, use **Settings > Repair Bridge** for the selected game's saved PoB folder. Close PoB before confirming the displayed game and folder. Reopen PoB after repair and use **Check Bridge** to verify the authenticated connection. Repair and check do not import a character or save a build.
 
 The companion refuses import if CURRENT and the active file-backed GUIDE name the same file, including case/relative-path variants and hardlink aliases. Select a separate CURRENT XML first. This guard runs before networking and again before sending IMPORT; share-code guides do not use an inactive file path.
 
@@ -123,7 +125,7 @@ Connection failures identify the phase and socket error code without logging cre
 
 For a safe reachability check, run `bin\Poe2ItemCompanion.exe --probe-pob-bridge --game poe1` (or `poe2`; optionally append the installation path). This command only sends `HELLO` and verifies PoB's authenticated challenge, then disconnects. It never sends `IMPORT`, loads a user build, saves configuration, or starts/restarts PoB. A successful probe establishes handshake reachability only, not character import/save completion.
 
-**Updates/removal:** PoB updates can remove or invalidate the hook. Nothing silently repatches PoB. Save and close PoB, rerun Setup (or the bridge script), select the affected game, and restart PoB. If an anchor check fails, stop rather than hand-patching unknown code. To remove on the same PoB version, restore the original `Main.lua` and `Build.lua` backups (not backups from a repeat install) and delete only `Modules\CompanionBridge.lua` and `Modules\CompanionBridge.key`. If PoB has updated, restore official files for that version instead of downgrading from old backups. Never remove the module while `Main.lua` still references it.
+**Updates/removal:** PoB updates can remove or invalidate the hook. Nothing silently repatches PoB. Use **Repair Bridge** as described above. If an anchor check fails, stop rather than hand-patching unknown code. To remove on the same PoB version, restore the original `Main.lua` and `Build.lua` backups (not backups from a repeat install) and delete only `Modules\CompanionBridge.lua` and `Modules\CompanionBridge.key`. If PoB has updated, restore official files for that version instead of downgrading from old backups. Never remove the module while `Main.lua` still references it.
 
 Run `bin\Poe2ItemCompanion.exe --test-pob-bridge-fixtures` to check the installer script and mock TCP protocol against synthetic fixtures without an installed PoB.
 

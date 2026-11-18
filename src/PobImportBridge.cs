@@ -104,10 +104,10 @@ namespace Poe2ItemCompanion
         private static string ReadCredential(string pobPath, GameId game)
         {
             string keyPath = Path.Combine(pobPath, "Modules", "CompanionBridge.key");
-            if (!File.Exists(keyPath))
-                throw new InvalidOperationException("Bridge not installed for this PoB. Run scripts\\install-pob-bridge.ps1, then restart PoB.");
             if (GameIdentity.DetectInstallation(pobPath) != game)
                 throw new InvalidOperationException("The selected PoB installation belongs to the other game.");
+            if (!File.Exists(keyPath))
+                throw new InvalidOperationException("Bridge credential not found. Use Settings > Repair Bridge with PoB closed, then restart PoB.");
             string token = File.ReadAllText(keyPath).Trim();
             if (token.Length != 64 || !System.Text.RegularExpressions.Regex.IsMatch(token, "^[0-9a-f]{64}$"))
                 throw new InvalidDataException("Invalid bridge credential. Reinstall the bridge.");
