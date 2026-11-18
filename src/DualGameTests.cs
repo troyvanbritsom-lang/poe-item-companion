@@ -9,6 +9,9 @@ namespace Poe2ItemCompanion
 {
     public static class DualGameTests
     {
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr SendMessage(IntPtr window, int message, IntPtr key, IntPtr data);
+
         private static void Require(bool condition, string message)
         {
             if (!condition) throw new InvalidOperationException(message);
@@ -322,6 +325,8 @@ namespace Poe2ItemCompanion
                 Require(details.ClassName == "Witch", "Fixture class did not load correctly.");
                 Require(details.Loadouts.Count == 2, "Expected two real loadouts, got " + string.Join(", ", details.Loadouts));
                 Require(details.Skills.SelectMany(g => g.Gems).Any(g => g.Name == "Fireball"), "Native gem resolution failed.");
+                Require(details.Skills.SelectMany(g => g.Gems).First(g => g.Name == "Fireball").Color == 3,
+                    "Native Fireball color metadata was not propagated for " + game + ".");
                 var first = engine.SetLoadout("Early {1}", out error);
                 Require(first != null && first.Success && first.ActiveLoadout == "Early {1}", "Early loadout: " + error);
                 var early = engine.GetBuildDetails(out error);
@@ -378,12 +383,18 @@ namespace Poe2ItemCompanion
                 string current = Path.Combine(directory, game + "-switch-current.xml");
                 string guide = Path.Combine(directory, game + "-switch-guide.xml");
                 File.WriteAllText(current, Build(game, false));
-                File.WriteAllText(guide, Build(game, true));
+                File.WriteAllText(guide, Build(game, true).Replace("Early {1}", "Act 1 {1}").Replace("Late {2}", "Act 2 {2}"));
+                string log = Path.Combine(directory, game + "-selector-Client.txt");
+                File.WriteAllText(log, "Generating level 1 area \"" + (game == GameId.Poe1 ? "1_1_town" : "G1_town") + "\"\n");
                 store.Profiles[game.ToString()] = new AppConfig { Game = game, PobPath = GameIdentity.DefaultPobPath(game),
                     BuildFilePath = guide, CurrentBuildFilePath = current, BuildDirectory = directory, ProfileStore = store, DisableSave = true,
+                    FollowGameStage = true, GameLogPath = log,
                     HotkeyKey = (int)(game == GameId.Poe1 ? Keys.F23 : Keys.F24), HotkeyModifiers = 15,
+                    QuestOverlayHotkeyKey = (int)Keys.F22, QuestOverlayHotkeyModifiers = 15,
                     GemOverlayHotkeyKey = 0, PassiveOverlayHotkeyKey = 0, GemDetectHotkeyKey = 0, TreeDetectHotkeyKey = 0,
                     GemAutoShow = false, PassiveAutoShow = false };
+                store.Profiles[game.ToString()].MigrateOverlaySelector(); // legacy quest key becomes the selector key
+                store.Profiles[game.ToString()].SetGuideLoadout("Act 2 {2}");
             }
             string path = AppConfig.GetConfigFilePath();
             byte[] original = File.Exists(path) ? File.ReadAllBytes(path) : null;
@@ -396,6 +407,7 @@ namespace Poe2ItemCompanion
                 var oldEngine = (PobLuaEngine)engineField.GetValue(context);
                 Application.DoEvents();
                 UiTests.AssertBridgeVisible(old);
+                var oldQuest = TestQuestShortcut(context);
                 foreach (GameId game in new[] { GameId.Poe1, GameId.Poe2, GameId.Poe1 })
                 {
                     if (game == GameId.Poe1)
@@ -410,6 +422,9 @@ namespace Poe2ItemCompanion
                     var engine = (PobLuaEngine)engineField.GetValue(context);
                     Require(old.IsDisposed && !oldEngine.IsInitialized && engine.Game == game && engine.IsBuildLoaded
                         && window.Text.Contains(GameIdentity.Name(game)), "UI switch did not dispose/recreate the correct profile engine/view.");
+                    Require(oldQuest.IsDisposed, "Switching profiles left the previous game's quest overlay open.");
+                    oldQuest = TestQuestShortcut(context);
+                    window.Show();
                     foreach (var size in new[] { window.MinimumSize, new System.Drawing.Size(1240, 900) })
                     {
                         window.Size = size;
@@ -422,7 +437,146 @@ namespace Poe2ItemCompanion
                 }
             }
             Require(original == null ? !File.Exists(path) : File.ReadAllBytes(path).SequenceEqual(original), "UI fixture wrote user configuration.");
-            Console.WriteLine("PASSED: repeated dashboard/tray profile switches retain a visible, unclipped PoB import button at minimum/default sizes, recreate views/engines and preserve user config.");
+            Console.WriteLine("PASSED: repeated profile switches retain the PoB import button, toggle one shared quest overlay via global hotkey/tray with dashboard hidden, dispose old overlays and preserve user config.");
+        }
+
+        private static QuestOverlay TestQuestShortcut(TrayApplicationContext context)
+        {
+            var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+            var window = (MainWindow)typeof(TrayApplicationContext).GetField("_mainWindow", flags).GetValue(context);
+            var hotkey = (HotkeyManager)typeof(TrayApplicationContext).GetField("_selectorHotkey", flags).GetValue(context);
+            Require(hotkey.IsRegistered && hotkey.CurrentKey == (int)Keys.F22 && hotkey.CurrentModifiers == 15,
+                "Overlay selector shortcut was not migrated/registered/rebound for the active profile.");
+            window.Hide();
+            Func<OverlaySelector> press = () =>
+            {
+                typeof(HotkeyManager).GetMethod("WndProc", flags).Invoke(hotkey,
+                    new object[] { Message.Create(hotkey.Handle, 0x0312, new IntPtr(9007), IntPtr.Zero) });
+                Application.DoEvents();
+                var opened = (OverlaySelector)typeof(TrayApplicationContext).GetField("_selector", flags).GetValue(context);
+                Require(opened != null && opened.Visible, "Selector hotkey did not open the overlay selector.");
+                return opened;
+            };
+            var selector = press();
+            Require(selector.Choose(2) && selector.Chosen == "Quests" && selector.IsDisposed, "Selector did not route choice 3 to Quests and close.");
+            Application.DoEvents();
+            var guide = (GuideBuildView)typeof(MainWindow).GetField("_guideBuildView", flags).GetValue(window);
+            var quests = (QuestPlannerView)typeof(GuideBuildView).GetField("_quests", flags).GetValue(guide);
+            var overlay = (QuestOverlay)typeof(QuestPlannerView).GetField("_overlay", flags).GetValue(quests);
+            Require(overlay != null && overlay.Visible && !window.Visible, "Selector failed to open the quest overlay without the dashboard.");
+            var config = (AppConfig)typeof(TrayApplicationContext).GetField("_config", flags).GetValue(context);
+            Require(overlay.Controls.OfType<Label>().Single().Text.Contains(config.GameName), "Quest shortcut showed the other game's route.");
+            selector = press();
+            Require(selector.Controls[0].Controls.OfType<Button>().ElementAt(2).Text.Contains("open - hide"), "Selector did not mark the open quest overlay.");
+            typeof(HotkeyManager).GetMethod("WndProc", flags).Invoke(hotkey,
+                new object[] { Message.Create(hotkey.Handle, 0x0312, new IntPtr(9007), IntPtr.Zero) });
+            Application.DoEvents();
+            Require(selector.IsDisposed || !selector.Visible, "Pressing the selector key while it is open did not close it.");
+            press().Choose(2);
+            Require(!overlay.Visible, "Choosing Quests again did not hide the overlay.");
+            press().Choose(3);
+            var equipment = (EquipmentOverlay)typeof(TrayApplicationContext).GetField("_equipmentOverlay", flags).GetValue(context);
+            Require(equipment != null && equipment.Visible && equipment.TitleText.Contains("guide"), "Selector did not open the guide equipment overlay.");
+            TestSelectorStages(guide, config, equipment, press);
+            press().Choose(3);
+            Require(!equipment.Visible, "Choosing equipment again did not hide it.");
+            var notify = (NotifyIcon)typeof(TrayApplicationContext).GetField("_notifyIcon", flags).GetValue(context);
+            var overlays = notify.ContextMenuStrip.Items.OfType<ToolStripMenuItem>().Single(item => item.Name == "Overlays");
+            Require(overlays.Text.Contains(config.GetOverlaySelectorHotkeyDisplayString()), "Tray menu does not show the selector key.");
+            overlays.DropDownItems.OfType<ToolStripMenuItem>().Single(item => item.Name == "Quests overlay").PerformClick();
+            Require(overlay.Visible && ReferenceEquals(overlay, typeof(QuestPlannerView).GetField("_overlay", flags).GetValue(quests))
+                && !window.Visible, "Tray entry did not reuse the overview's quest overlay with dashboard hidden.");
+            Require(context.SelectorEntries().Count == 5 && context.SelectorEntries()[4].Name == "Update character" &&
+                context.SelectorEntries()[4].IsOpen == null, "Update character is missing from selector position 5.");
+            Require(overlays.DropDownItems.OfType<ToolStripMenuItem>().Any(item => item.Name == "Update character") &&
+                !overlays.DropDownItems.OfType<ToolStripMenuItem>().Any(item => item.Name == "Update character overlay"),
+                "Tray menu does not distinguish the character update action from an overlay.");
+            string currentBefore = config.CurrentBuildFilePath, guideBefore = config.BuildFilePath;
+            // Exercise the real selector route while busy: no live PoB import may be sent by this test.
+            typeof(MainWindow).GetMethod("SetBusy", flags).Invoke(window, new object[] { true, "Fixture operation" });
+            try
+            {
+                selector = press();
+                Require(selector.Choose(4) && selector.Chosen == "Update character", "Selector did not route action 5.");
+                Application.DoEvents();
+                Require(window.Visible && window.IsBusy && (selector.IsDisposed || !selector.Visible),
+                    "Update character did not expose dashboard progress or ignored the existing busy guard.");
+                Require(config.CurrentBuildFilePath == currentBefore && config.BuildFilePath == guideBefore,
+                    "Busy character update changed the Current or Guide source.");
+            }
+            finally
+            {
+                typeof(MainWindow).GetMethod("SetBusy", flags).Invoke(window, new object[] { false, null });
+                window.Hide();
+            }
+            return overlay;
+        }
+
+        private static void TestSelectorStages(GuideBuildView guide, AppConfig config, EquipmentOverlay equipment, Func<OverlaySelector> press)
+        {
+            string current = config.CurrentBuildFilePath, source = config.BuildFilePath;
+            byte[] currentBytes = File.ReadAllBytes(current), guideBytes = File.ReadAllBytes(source);
+            var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+            var follow = (CheckBox)typeof(GuideBuildView).GetField("_followGame", flags).GetValue(guide);
+            follow.Checked = true;
+            using (var gems = new GemOverlay(config))
+            using (var passives = new PassiveOverlay(config))
+            {
+                gems.ShowOverlay();
+                passives.ShowOverlay();
+                var selector = press();
+                var picker = selector.Controls[0].Controls.OfType<ComboBox>().Single();
+                Require(picker.Enabled && picker.Items.Contains("Act 1 {1}") && picker.Items.Contains("Act 2 {2}"),
+                    config.Game + " selector is missing its Guide's stages.");
+                var summary = (RichTextBox)typeof(GuideBuildView).GetField("_summary", flags).GetValue(guide);
+                Require(config.FollowGameStage && guide.SelectedStage == "Act 1 {1}" && summary.Text.Contains("Stage: Act 1 {1}"),
+                    "Following on load left a superseded stage snapshot in the main Guide view.");
+                picker.Focus();
+                picker.DroppedDown = true;
+                typeof(OverlaySelector).GetMethod("OnKeyDown", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                    .Invoke(selector, new object[] { new KeyEventArgs(Keys.D4) });
+                Require(selector.Visible && selector.Chosen == null && equipment.Visible,
+                    "Typing a digit in the stage picker ran an overlay command.");
+                picker.DroppedDown = false;
+                picker.DroppedDown = true;
+                SendMessage(picker.Handle, 0x100, new IntPtr((int)Keys.End), IntPtr.Zero);
+                SendMessage(picker.Handle, 0x100, new IntPtr((int)Keys.Enter), IntPtr.Zero);
+                Application.DoEvents();
+                Require(config.GetSelectedGuideLoadout() == "Act 2 {2}" && guide.SelectedStage == "Act 2 {2}" && selector.Visible
+                    && !config.FollowGameStage && !follow.Checked,
+                    config.Game + " native dropdown selection did not persist the shared stage and pause following (selected: "
+                    + config.GetSelectedGuideLoadout() + ", follows: " + config.FollowGameStage + ").");
+                string zone = config.Game == GameId.Poe1 ? "1_1_manualcheck" : "G1_manualcheck";
+                File.AppendAllText(config.GameLogPath, "Generating level 2 area \"" + zone + "\"\n");
+                var gameLog = (Label)typeof(GuideBuildView).GetField("_gameLog", flags).GetValue(guide);
+                var timeout = DateTime.UtcNow.AddSeconds(15);
+                while ((!equipment.TitleText.Contains("Act 2 {2}") || !gems.TitleText.Contains("Act 2 {2}")
+                    || passives.GuideDetails == null || passives.GuideDetails.ActiveLoadout != "Act 2 {2}"
+                    || !gameLog.Text.Contains(zone)) && DateTime.UtcNow < timeout)
+                {
+                    Application.DoEvents();
+                    System.Threading.Thread.Sleep(20);
+                }
+                Require(equipment.GuideDetails.ActiveLoadout == "Act 2 {2}"
+                    && equipment.Cells.Any(c => c.Gear != null && c.Gear.ItemName == "Late Boots, Dragonscale Boots")
+                    && gems.TitleText.Contains("Act 2 {2}") && passives.GuideDetails.ActiveLoadout == "Act 2 {2}"
+                    && gameLog.Text.Contains(zone) && config.GetSelectedGuideLoadout() == "Act 2 {2}",
+                    config.Game + " visible equipment/gem/passive overlays did not refresh to the selector's stage.");
+                Require(summary.Text.Contains("Stage: Act 2 {2}"), "Main Guide view retained the old stage.");
+                follow.Checked = true;
+                Require(config.FollowGameStage && guide.SelectedStage == "Act 1 {1}" && (string)picker.SelectedItem == "Act 1 {1}"
+                    && summary.Text.Contains("Stage: Act 1 {1}"), "Resuming following failed to apply the detected act everywhere.");
+                var mainPicker = (ComboBox)typeof(GuideBuildView).GetField("_stage", flags).GetValue(guide);
+                mainPicker.SelectedItem = "Act 2 {2}";
+                Require((string)picker.SelectedItem == "Act 2 {2}" && config.GetSelectedGuideLoadout() == "Act 2 {2}"
+                    && !config.FollowGameStage && !follow.Checked,
+                    "Main Guide stage did not synchronize back to the open selector.");
+                typeof(OverlaySelector).GetMethod("OnKeyDown", flags).Invoke(selector, new object[] { new KeyEventArgs(Keys.Escape) });
+                Require(selector.IsDisposed || !selector.Visible, "Esc no longer closes the stage-enabled selector.");
+                Require(config.CurrentBuildFilePath == current && config.BuildFilePath == source
+                    && File.ReadAllBytes(current).SequenceEqual(currentBytes) && File.ReadAllBytes(source).SequenceEqual(guideBytes),
+                    "Selecting a Guide stage changed the Current/Guide sources or their files.");
+            }
         }
     }
 }

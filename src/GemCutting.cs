@@ -8,6 +8,7 @@ namespace Poe2ItemCompanion
     {
         public string Name { get; set; }
         public string Kind { get; set; }
+        public int Color { get; set; }
         public int Tier { get; set; }
         public string WeaponRequirements { get; set; }
         public string Tags { get; set; }
@@ -43,53 +44,37 @@ namespace Poe2ItemCompanion
 
         public static List<GemCutEntry> Plan(BuildDetails guide, BuildDetails current)
         {
-            if (guide != null && guide.Game == "poe1") return PlanPoe1(guide, current);
-            var result = new Dictionary<string, GemCutEntry>(StringComparer.OrdinalIgnoreCase);
             if (guide == null) return new List<GemCutEntry>();
-            var currentGems = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            if (current != null)
-                foreach (var g in current.Skills.SelectMany(s => s.Gems))
-                {
-                    int lvl = g.Level ?? 0;
-                    int existing;
-                    if (!currentGems.TryGetValue(g.Name, out existing) || lvl > existing) currentGems[g.Name] = lvl;
-                }
-
+            if (current != null && !string.Equals(guide.Game, current.Game, StringComparison.Ordinal))
+                throw new InvalidOperationException("Current and Guide gems must belong to the same game.");
+            if (guide.Game == "poe1") return PlanPoe1(guide, current);
+            var result = new List<GemCutEntry>();
+            var available = AvailableGems(current);
             foreach (var group in guide.Skills)
                 foreach (var gem in group.Gems)
                 {
-                    if (string.IsNullOrEmpty(gem.Name) || string.IsNullOrEmpty(gem.Kind)) continue;
-                    GemCutEntry e;
-                    if (!result.TryGetValue(gem.Name, out e))
-                    {
-                        e = new GemCutEntry { Name = gem.Name, Kind = gem.Kind, Tier = gem.Tier ?? 0, WeaponRequirements = gem.WeaponRequirements, Tags = gem.Tags };
-                        result[gem.Name] = e;
-                    }
-                    e.GuideLevel = Math.Max(e.GuideLevel, gem.Level ?? 1);
-                    e.GuideEnabled |= gem.Enabled && group.Enabled;
+                    var match = Match(available, gem);
+                    bool required = group.Enabled && gem.Enabled;
+                    var e = new GemCutEntry { Name = gem.Name, Kind = gem.Kind, Color = gem.Color, Tier = gem.Tier ?? 0,
+                        WeaponRequirements = gem.WeaponRequirements, Tags = gem.Tags, GuideLevel = gem.Level ?? 1,
+                        GuideEnabled = required, CurrentLevel = match == null ? null : match.Level };
+                    if (required && match != null) available.Remove(match);
+                    e.NeedsCut = required && match == null && e.Tier > 0;
+                    e.Status = !required ? "Disabled in guide" : current == null ? "Current character not loaded"
+                        : match != null ? "Have level " + match.Level + (e.IsUnderLevel ? ", guide uses " + e.GuideLevel : "")
+                        : e.Tier <= 0 ? "Not cuttable / item-granted; check equipment" : "Missing instance - cut this";
+                    result.Add(e);
                 }
 
-            foreach (var e in result.Values)
+            foreach (var e in result)
             {
                 if (e.Tier <= 0) e.UncutGem = "Not cut from an uncut gem (PoB2 tier 0, e.g. item-granted)";
                 else if (e.Kind == "Support") e.UncutGem = "Uncut Support Gem level " + e.Tier + "+";
                 else e.UncutGem = "Uncut " + e.Kind + " Gem level " + e.Tier + "+ (cut gem level = uncut gem level; guide uses " + e.GuideLevel + ")";
                 e.CutterTab = e.Kind == "Support" ? "Support gems" : e.Kind == "Spirit" ? "Spirit gems"
                     : !string.IsNullOrEmpty(e.WeaponRequirements) ? e.WeaponRequirements : "No weapon tab in PoB2 data - type the name in the search box";
-                int have;
-                if (current == null) { e.Status = "Current character not loaded"; e.NeedsCut = e.Tier > 0; }
-                else if (currentGems.TryGetValue(e.Name, out have))
-                {
-                    e.CurrentLevel = have;
-                    if (e.Kind == "Support" || have >= e.GuideLevel) e.Status = "Have (level " + have + ")";
-                    else e.Status = "Have level " + have + ", guide uses " + e.GuideLevel;
-                }
-                else { e.Status = "Missing - cut this"; e.NeedsCut = e.Tier > 0; }
             }
-            return result.Values
-                .OrderByDescending(e => e.NeedsCut)
-                .ThenBy(e => e.Kind == "Skill" ? 0 : e.Kind == "Spirit" ? 1 : 2)
-                .ThenBy(e => e.Tier).ThenBy(e => e.Name).ToList();
+            return result;
         }
 
         // Same entries, arranged like the guide's skill groups (skill first, then its supports).
@@ -97,56 +82,51 @@ namespace Poe2ItemCompanion
         {
             var groups = new List<GemCutGroup>();
             if (guide == null) return groups;
-            if (guide.Game == "poe1")
-            {
-                var entries = PlanPoe1(guide, current);
-                int index = 0;
-                foreach (var group in guide.Skills)
-                {
-                    var result = new GemCutGroup { Label = group.Label + (string.IsNullOrEmpty(group.Slot) ? "" : " [" + group.Slot + "]"),
-                        Enabled = group.Enabled, Main = group.Main };
-                    foreach (var gem in group.Gems) result.Entries.Add(entries[index++]);
-                    groups.Add(result);
-                }
-                return groups;
-            }
-            var byName = Plan(guide, current).ToDictionary(e => e.Name, StringComparer.OrdinalIgnoreCase);
+            var entries = Plan(guide, current);
+            int index = 0;
             foreach (var group in guide.Skills)
             {
-                var g = new GemCutGroup { Label = group.Label, Main = group.Main, Enabled = group.Enabled };
-                foreach (var gem in group.Gems)
+                var result = new GemCutGroup { Label = group.Label + (string.IsNullOrEmpty(group.Slot) ? "" : " [" + group.Slot + "]"),
+                    Enabled = group.Enabled, Main = group.Main };
+                foreach (var gem in group.Gems) result.Entries.Add(entries[index++]);
+                if (guide.Game != "poe1")
                 {
-                    GemCutEntry e;
-                    if (string.IsNullOrEmpty(gem.Name) || !byName.TryGetValue(gem.Name, out e)) continue;
-                    if (!g.Entries.Contains(e)) g.Entries.Add(e);
+                    result.Entries = result.Entries.Where(e => e.Kind != "Support").Concat(result.Entries.Where(e => e.Kind == "Support")).ToList();
                 }
-                if (g.Entries.Count == 0) continue;
-                // Active/spirit gems first, supports after, keeping PoB2's order within each.
-                g.Entries = g.Entries.Where(e => e.Kind != "Support").Concat(g.Entries.Where(e => e.Kind == "Support")).ToList();
-                if (string.IsNullOrEmpty(g.Label))
-                {
-                    var head = g.Entries.FirstOrDefault(e => e.Kind != "Support");
-                    g.Label = head != null ? head.Name : "Unlabeled group";
-                }
-                groups.Add(g);
+                if (string.IsNullOrWhiteSpace(result.Label))
+                    result.Label = result.Entries.Where(e => e.Kind != "Support").Select(e => e.Name).FirstOrDefault() ?? "Unlabeled group";
+                if (result.Entries.Count > 0) groups.Add(result);
             }
             return groups;
         }
 
+        private static List<SkillGem> AvailableGems(BuildDetails current)
+        {
+            return current == null ? new List<SkillGem>() : current.Skills
+                .Where(g => g.Enabled).SelectMany(g => g.Gems).Where(g => g.Enabled).ToList();
+        }
+
+        private static SkillGem Match(List<SkillGem> available, SkillGem gem)
+        {
+            return available.Where(g => ((!string.IsNullOrEmpty(gem.Id) && !string.IsNullOrEmpty(g.Id))
+                        ? string.Equals(g.Id, gem.Id, StringComparison.OrdinalIgnoreCase)
+                        : !string.IsNullOrEmpty(gem.Name) && string.Equals(g.Name, gem.Name, StringComparison.OrdinalIgnoreCase))
+                    && string.Equals(g.Variant ?? "", gem.Variant ?? "", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(g.Kind ?? "", gem.Kind ?? "", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(g => (g.Level ?? 0) >= (gem.Level ?? 1) && (g.Quality ?? 0) >= (gem.Quality ?? 0))
+                .ThenByDescending(g => g.Level ?? 0).FirstOrDefault();
+        }
+
         private static List<GemCutEntry> PlanPoe1(BuildDetails guide, BuildDetails current)
         {
-            var available = current == null ? new List<SkillGem>() : current.Skills
-                .Where(g => g.Enabled).SelectMany(g => g.Gems).Where(g => g.Enabled).ToList();
+            var available = AvailableGems(current);
             var result = new List<GemCutEntry>();
             foreach (var group in guide.Skills)
                 foreach (var gem in group.Gems)
                 {
-                    var match = available.Where(g => (!string.IsNullOrEmpty(gem.Id) ? g.Id == gem.Id : g.Name == gem.Name)
-                            && (g.Variant ?? "") == (gem.Variant ?? ""))
-                        .OrderByDescending(g => (g.Level ?? 0) >= (gem.Level ?? 1) && (g.Quality ?? 0) >= (gem.Quality ?? 0))
-                        .ThenByDescending(g => g.Level ?? 0).FirstOrDefault();
+                    var match = Match(available, gem);
                     bool required = group.Enabled && gem.Enabled;
-                    var e = new GemCutEntry { Name = gem.Name, Kind = gem.Kind ?? "Skill", Poe1 = true,
+                    var e = new GemCutEntry { Name = gem.Name, Kind = gem.Kind ?? "Skill", Color = gem.Color, Poe1 = true,
                         GuideLevel = gem.Level ?? 1, GuideQuality = gem.Quality ?? 0, GuideEnabled = required,
                         CurrentLevel = match == null ? (int?)null : match.Level, NeedsCut = required && match == null,
                         IsUnderQuality = match != null && (match.Quality ?? 0) < (gem.Quality ?? 0),

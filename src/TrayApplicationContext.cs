@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace Poe2ItemCompanion
@@ -10,6 +12,9 @@ namespace Poe2ItemCompanion
         private AppConfig _config;
         private NotifyIcon _notifyIcon;
         private HotkeyManager _hotkeyManager;
+        private HotkeyManager _selectorHotkey;
+        private OverlaySelector _selector;
+        private EquipmentOverlay _equipmentOverlay;
         private PobLuaEngine _engine;
         private ComparisonPopup _activePopup;
         private MainWindow _mainWindow;
@@ -58,19 +63,19 @@ namespace Poe2ItemCompanion
                 Title = "Gem overlay", WindowName = "gem cutting window", SpotPrefix = "spot-", GemCutter = true,
                 Create = c => new GemOverlay(c), Spots = c => c.GemDetectSpots,
                 GetAutoShow = c => c.GemAutoShow, SetAutoShow = (c, v) => c.GemAutoShow = v,
-                ToggleModifiers = c => c.GemOverlayHotkeyModifiers, ToggleKey = c => c.GemOverlayHotkeyKey,
                 MarkModifiers = c => c.GemDetectHotkeyModifiers, MarkKey = c => c.GemDetectHotkeyKey
             };
-            _gemFeature.Start(_config, 9002, 9003, _notifyIcon, UpdateContextMenu);
+            _gemFeature.Start(_config, 9003, _notifyIcon, UpdateContextMenu);
             _passiveFeature = new OverlayFeature
             {
                 Title = "Passive overlay", WindowName = "passive tree", SpotPrefix = "tree-",
                 Create = c => new PassiveOverlay(c), Spots = c => c.TreeDetectSpots,
                 GetAutoShow = c => c.PassiveAutoShow, SetAutoShow = (c, v) => c.PassiveAutoShow = v,
-                ToggleModifiers = c => c.PassiveOverlayHotkeyModifiers, ToggleKey = c => c.PassiveOverlayHotkeyKey,
                 MarkModifiers = c => c.TreeDetectHotkeyModifiers, MarkKey = c => c.TreeDetectHotkeyKey
             };
-            _passiveFeature.Start(_config, 9004, 9005, _notifyIcon, UpdateContextMenu);
+            _passiveFeature.Start(_config, 9005, _notifyIcon, UpdateContextMenu);
+            _selectorHotkey = new HotkeyManager(9007);
+            _selectorHotkey.HotkeyPressed += ShowOverlaySelector;
             _detectTimer = new Timer { Interval = 500 };
             _detectTimer.Tick += (s, e) => PollOverlays();
             _detectTimer.Start();
@@ -119,15 +124,19 @@ namespace Poe2ItemCompanion
 
         public void ShowMainWindow()
         {
-            if (_mainWindow == null || _mainWindow.IsDisposed)
-            {
-                _mainWindow = new MainWindow(_config, _engine, _hotkeyManager, _notifyIcon, UpdateContextMenu, OpenSettings, SwitchGame);
-            }
-
+            EnsureMainWindow();
             _mainWindow.Show();
             _mainWindow.WindowState = FormWindowState.Normal;
             _mainWindow.BringToFront();
             _mainWindow.Activate();
+        }
+
+        private void EnsureMainWindow()
+        {
+            if (_mainWindow == null || _mainWindow.IsDisposed)
+            {
+                _mainWindow = new MainWindow(_config, _engine, _hotkeyManager, _notifyIcon, UpdateContextMenu, OpenSettings, SwitchGame);
+            }
         }
 
         private void RegisterConfiguredHotkey()
@@ -145,7 +154,68 @@ namespace Poe2ItemCompanion
             var taken = new System.Collections.Generic.HashSet<int> { (_config.HotkeyModifiers << 16) | _config.HotkeyKey };
             if (_gemFeature != null) _gemFeature.RegisterHotkeys(taken);
             if (_passiveFeature != null) _passiveFeature.RegisterHotkeys(taken);
+            if (_selectorHotkey != null)
+            {
+                _selectorHotkey.Unregister();
+                if (_config.OverlaySelectorHotkeyKey != 0)
+                {
+                    string selectorError = null;
+                    if (!taken.Add((_config.OverlaySelectorHotkeyModifiers << 16) | _config.OverlaySelectorHotkeyKey))
+                        selectorError = "This shortcut is already used by another companion action.";
+                    else
+                        _selectorHotkey.Register(_config.OverlaySelectorHotkeyModifiers, _config.OverlaySelectorHotkeyKey, out selectorError);
+                    if (selectorError != null)
+                    {
+                        Logger.Warn("Overlay selector hotkey not registered: " + selectorError);
+                        _notifyIcon.ShowBalloonTip(4000, "Overlay selector hotkey",
+                            "Could not register " + _config.GetOverlaySelectorHotkeyDisplayString() + ". " + selectorError + " Pick another in Settings.", ToolTipIcon.Warning);
+                    }
+                }
+            }
             UpdateContextMenu();
+            NotifySelectorMigration();
+        }
+
+        private void NotifySelectorMigration()
+        {
+            if (!_config.OverlaySelectorJustMigrated) return;
+            _config.OverlaySelectorJustMigrated = false;
+            string key = _config.OverlaySelectorHotkeyKey == 0 ? "no key (set one in Settings)" : _config.GetOverlaySelectorHotkeyDisplayString();
+            Logger.Info("Overlay shortcuts combined into the overlay selector: " + key + ". Previous per-overlay keys are kept in config.json.");
+            try { _config.Save(); }
+            catch (Exception ex) { Logger.Warn("Could not save the overlay selector migration: " + ex.Message); }
+            _notifyIcon.ShowBalloonTip(6000, "Overlay selector",
+                "Press " + key + " and pick Gems, Passives, Quests, Recommended equipment or Update character. Compare and detection-spot keys are unchanged.", ToolTipIcon.Info);
+        }
+
+        internal List<OverlaySelector.Entry> SelectorEntries()
+        {
+            return new List<OverlaySelector.Entry>
+            {
+                new OverlaySelector.Entry { Name = "Gems", Hint = "Guide gems with level and vendor details", IsOpen = () => _gemFeature.IsOpen, Toggle = ToggleGemOverlay },
+                new OverlaySelector.Entry { Name = "Passives", Hint = "Next guide passives from your Current tree", IsOpen = () => _passiveFeature.IsOpen, Toggle = TogglePassiveOverlay },
+                new OverlaySelector.Entry { Name = "Quests", Hint = "Campaign route and rewards", IsOpen = () => Application.OpenForms.OfType<QuestOverlay>().Any(f => f.Visible), Toggle = ToggleQuestOverlay },
+                new OverlaySelector.Entry { Name = "Recommended equipment", Hint = "Selected guide stage gear; right-click an item to search on trade", IsOpen = () => _equipmentOverlay != null && !_equipmentOverlay.IsDisposed && _equipmentOverlay.Visible, Toggle = ToggleEquipmentOverlay },
+                new OverlaySelector.Entry
+                {
+                    Name = "Update character", Hint = "Import the selected PoB character into Current; Guide stays unchanged",
+                    Toggle = async () => { ShowMainWindow(); await _mainWindow.ImportViaPob(); }
+                },
+            };
+        }
+
+        public void ShowOverlaySelector()
+        {
+            if (_selector != null && !_selector.IsDisposed && _selector.Visible) { _selector.CloseAndRestore(); return; }
+            EnsureMainWindow();
+            _selector = new OverlaySelector(SelectorEntries(), _config.OverlaySelectorHotkeyKey == 0 ? null : _config.GetOverlaySelectorHotkeyDisplayString(), _mainWindow.GuideView);
+            _selector.ShowNear(Cursor.Position);
+        }
+
+        public void ToggleEquipmentOverlay()
+        {
+            if (_equipmentOverlay == null || _equipmentOverlay.IsDisposed) _equipmentOverlay = new EquipmentOverlay(_config);
+            _equipmentOverlay.Toggle();
         }
 
         private void UpdateContextMenu()
@@ -183,8 +253,24 @@ namespace Poe2ItemCompanion
             testItem.Click += (s, e) => TriggerSampleComparison();
             menu.Items.Add(testItem);
 
-            AddOverlayMenu(menu, _gemFeature, _config.GetGemOverlayHotkeyDisplayString(), AppConfig.HotkeyText(_config.GemDetectHotkeyModifiers, _config.GemDetectHotkeyKey), "gem cutter");
-            AddOverlayMenu(menu, _passiveFeature, _config.GetPassiveOverlayHotkeyDisplayString(), AppConfig.HotkeyText(_config.TreeDetectHotkeyModifiers, _config.TreeDetectHotkeyKey), "passive tree");
+            string selectorKey = _config.OverlaySelectorHotkeyKey == 0 ? "no key" : _config.GetOverlaySelectorHotkeyDisplayString();
+            var overlays = new ToolStripMenuItem("Overlays (selector: " + selectorKey + ")") { Name = "Overlays" };
+            var selectorItem = new ToolStripMenuItem("Open overlay selector...");
+            selectorItem.Click += (s, e) => ShowOverlaySelector();
+            overlays.DropDownItems.Add(selectorItem);
+            overlays.DropDownItems.Add(new ToolStripSeparator());
+            if (_gemFeature != null)
+                foreach (var entry in SelectorEntries())
+                {
+                    var choice = entry;
+                    string label = choice.Name + (choice.IsOpen == null ? "" : " overlay");
+                    var overlayItem = new ToolStripMenuItem(label) { Name = label };
+                    overlayItem.Click += (s, e) => choice.Toggle();
+                    overlays.DropDownItems.Add(overlayItem);
+                }
+            menu.Items.Add(overlays);
+            AddOverlayMenu(menu, _gemFeature, AppConfig.HotkeyText(_config.GemDetectHotkeyModifiers, _config.GemDetectHotkeyKey), "gem cutter");
+            AddOverlayMenu(menu, _passiveFeature, AppConfig.HotkeyText(_config.TreeDetectHotkeyModifiers, _config.TreeDetectHotkeyKey), "passive tree");
 
             var reloadItem = new ToolStripMenuItem("Reload Current Character");
             reloadItem.Click += (s, e) => ReloadBuild();
@@ -346,12 +432,9 @@ Item Level: 82
             }
         }
 
-        private void AddOverlayMenu(ContextMenuStrip menu, OverlayFeature feature, string toggleKey, string markKey, string window)
+        private void AddOverlayMenu(ContextMenuStrip menu, OverlayFeature feature, string markKey, string window)
         {
             if (feature == null) return;
-            var item = new ToolStripMenuItem(feature.Title + " (" + toggleKey + ")");
-            item.Click += (s, e) => feature.Toggle();
-            menu.Items.Add(item);
             if (feature.GemCutter && _config.Game == GameId.Poe1) return;
             string plain = feature.PlainSpotCount > 0 ? ", " + feature.PlainSpotCount + " too plain/ignored - clear and re-mark" : "";
             var auto = new ToolStripMenuItem("Auto-open " + feature.Title.ToLowerInvariant() + " with " + window + " (" + feature.SpotCount + " spot(s)" + plain + "; mark with " + markKey + ")");
@@ -372,6 +455,12 @@ Item Level: 82
         public void TogglePassiveOverlay()
         {
             _passiveFeature.Toggle();
+        }
+
+        public void ToggleQuestOverlay()
+        {
+            EnsureMainWindow();
+            _mainWindow.ToggleQuestOverlay();
         }
 
         private void PollOverlays()
@@ -426,6 +515,9 @@ Item Level: 82
         {
             _detectTimer.Stop();
             _hotkeyManager.Unregister();
+            _selectorHotkey.Unregister();
+            if (_selector != null && !_selector.IsDisposed) _selector.Dispose();
+            if (_equipmentOverlay != null) { _equipmentOverlay.Dispose(); _equipmentOverlay = null; }
             if (_activePopup != null) { _activePopup.Dispose(); _activePopup = null; }
             if (_mainWindow != null) { _mainWindow.Dispose(); _mainWindow = null; }
             _gemFeature.SetConfig(incoming);
@@ -455,6 +547,8 @@ Item Level: 82
                 if (_mainWindow != null) _mainWindow.Dispose();
                 if (_notifyIcon != null) _notifyIcon.Dispose();
                 if (_hotkeyManager != null) _hotkeyManager.Dispose();
+                if (_selectorHotkey != null) _selectorHotkey.Dispose();
+                if (_equipmentOverlay != null) _equipmentOverlay.Dispose();
                 if (_detectTimer != null) _detectTimer.Dispose();
                 if (_gemFeature != null) _gemFeature.Dispose();
                 if (_passiveFeature != null) _passiveFeature.Dispose();

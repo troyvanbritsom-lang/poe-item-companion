@@ -13,6 +13,7 @@ namespace Poe2ItemCompanion
 
         private TextBox _pobPathBox;
         private TextBox _buildDirectoryBox;
+        private TextBox _gemIconDirectoryBox;
         private TextBox _buildPathBox;
         private ComboBox _buildDropdown;
         private CheckBox _autoDetectBuildBox;
@@ -21,10 +22,9 @@ namespace Poe2ItemCompanion
         private CheckBox _altBox;
         private CheckBox _shiftBox;
         private ComboBox _keyDropdown;
-        private CheckBox _gemCtrlBox, _gemAltBox, _gemShiftBox;
-        private ComboBox _gemKeyDropdown;
-        private CheckBox _treeCtrlBox, _treeAltBox, _treeShiftBox;
-        private ComboBox _treeKeyDropdown;
+        private CheckBox _selectorCtrlBox, _selectorAltBox, _selectorShiftBox;
+        private ComboBox _selectorKeyDropdown;
+        private TextBox _tradeLeagueBox;
         private NumericUpDown _timeoutBox;
         private Button _saveBtn;
         private Button _cancelBtn;
@@ -168,36 +168,6 @@ namespace Poe2ItemCompanion
 
             y += 40;
 
-            var gemLabel = new Label { Text = "Gem overlay key:", Location = new Point(labelX, y + 2), AutoSize = true };
-            _gemCtrlBox = new CheckBox { Text = "Ctrl", Location = new Point(inputX, y + 2), AutoSize = true };
-            _gemAltBox = new CheckBox { Text = "Alt", Location = new Point(inputX + 55, y + 2), AutoSize = true };
-            _gemShiftBox = new CheckBox { Text = "Shift", Location = new Point(inputX + 105, y + 2), AutoSize = true };
-            _gemKeyDropdown = new ComboBox { Location = new Point(inputX + 170, y), Width = 110, DropDownStyle = ComboBoxStyle.DropDownList, BackColor = Color.FromArgb(40, 40, 44), ForeColor = Color.White };
-            _gemKeyDropdown.Items.Add("(disabled)");
-            foreach (var k in _keyDropdown.Items) _gemKeyDropdown.Items.Add(k);
-            Controls.Add(gemLabel);
-            Controls.Add(_gemCtrlBox);
-            Controls.Add(_gemAltBox);
-            Controls.Add(_gemShiftBox);
-            Controls.Add(_gemKeyDropdown);
-
-            y += 40;
-
-            var treeLabel = new Label { Text = "Passive overlay key:", Location = new Point(labelX, y + 2), AutoSize = true };
-            _treeCtrlBox = new CheckBox { Text = "Ctrl", Location = new Point(inputX, y + 2), AutoSize = true };
-            _treeAltBox = new CheckBox { Text = "Alt", Location = new Point(inputX + 55, y + 2), AutoSize = true };
-            _treeShiftBox = new CheckBox { Text = "Shift", Location = new Point(inputX + 105, y + 2), AutoSize = true };
-            _treeKeyDropdown = new ComboBox { Location = new Point(inputX + 170, y), Width = 110, DropDownStyle = ComboBoxStyle.DropDownList, BackColor = Color.FromArgb(40, 40, 44), ForeColor = Color.White };
-            _treeKeyDropdown.Items.Add("(disabled)");
-            foreach (var k in _keyDropdown.Items) _treeKeyDropdown.Items.Add(k);
-            Controls.Add(treeLabel);
-            Controls.Add(_treeCtrlBox);
-            Controls.Add(_treeAltBox);
-            Controls.Add(_treeShiftBox);
-            Controls.Add(_treeKeyDropdown);
-
-            y += 40;
-
             // Popup Timeout
             var timeoutLabel = new Label { Text = "Popup Auto-Close:", Location = new Point(labelX, y + 2), AutoSize = true };
             _timeoutBox = new NumericUpDown
@@ -277,6 +247,14 @@ namespace Poe2ItemCompanion
             var paths = Section("BUILD SOURCES  /  " + _config.GameName);
             SettingRow(paths, "PoB directory", _pobPathBox, pobBrowse);
             SettingRow(paths, "Build directory", _buildDirectoryBox, directoryBrowse);
+            _gemIconDirectoryBox = new TextBox { AccessibleName = "Local gem image directory" };
+            var iconsBrowse = new Button { Text = "Browse..." };
+            iconsBrowse.Click += (s, e) =>
+            {
+                using (var dialog = new FolderBrowserDialog { Description = "Select this game's local gem PNG folder", SelectedPath = _gemIconDirectoryBox.Text })
+                    if (dialog.ShowDialog(this) == DialogResult.OK) _gemIconDirectoryBox.Text = dialog.SelectedPath;
+            };
+            SettingRow(paths, "Gem image directory", _gemIconDirectoryBox, iconsBrowse);
             SettingRow(paths, "Guide file (.xml)", _buildPathBox, buildBrowse);
             SettingRow(paths, "Quick select guide", _buildDropdown, null);
             _autoDetectBuildBox.AutoSize = _autoReloadBox.AutoSize = false;
@@ -285,12 +263,32 @@ namespace Poe2ItemCompanion
             SettingRow(paths, "", _autoReloadBox, null);
             AddSection(sections, paths);
             var keys = Section("KEYBOARD SHORTCUTS");
+            _selectorCtrlBox = new CheckBox { Text = "Ctrl", AutoSize = true };
+            _selectorAltBox = new CheckBox { Text = "Alt", AutoSize = true };
+            _selectorShiftBox = new CheckBox { Text = "Shift", AutoSize = true };
+            _selectorKeyDropdown = new ComboBox { Width = 110, DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Overlay selector shortcut" };
+            _selectorKeyDropdown.Items.Add("(disabled)");
+            foreach (var k in _keyDropdown.Items) _selectorKeyDropdown.Items.Add(k);
             SettingRow(keys, "Item comparison", UiTheme.Actions(_ctrlBox, _altBox, _shiftBox, _keyDropdown), null);
-            SettingRow(keys, "Gem overlay", UiTheme.Actions(_gemCtrlBox, _gemAltBox, _gemShiftBox, _gemKeyDropdown), null);
-            SettingRow(keys, "Passive overlay", UiTheme.Actions(_treeCtrlBox, _treeAltBox, _treeShiftBox, _treeKeyDropdown), null);
-            foreach (var check in new[] { _ctrlBox, _altBox, _shiftBox, _gemCtrlBox, _gemAltBox, _gemShiftBox, _treeCtrlBox, _treeAltBox, _treeShiftBox })
+            SettingRow(keys, "Overlay selector", UiTheme.Actions(_selectorCtrlBox, _selectorAltBox, _selectorShiftBox, _selectorKeyDropdown), null);
+            var selectorHint = new Label
+            {
+                Text = "One key opens a picker for Gems, Passives, Quests, Recommended equipment and Update character (press 1-5). Detection-spot keys are listed in the tray menu.",
+                AutoSize = false, Width = 360, Height = 40, ForeColor = UiTheme.Muted
+            };
+            SettingRow(keys, "", selectorHint, null);
+            foreach (var check in new[] { _ctrlBox, _altBox, _shiftBox, _selectorCtrlBox, _selectorAltBox, _selectorShiftBox })
                 check.Margin = new Padding(4, 7, 12, 3);
             AddSection(sections, keys);
+            var trade = Section("TRADE SEARCH");
+            _tradeLeagueBox = new TextBox { AccessibleName = "Trade league" };
+            SettingRow(trade, "League", _tradeLeagueBox, null);
+            SettingRow(trade, "", new Label
+            {
+                Text = "Exact league name on the official " + _config.GameName + " trade site. Leave empty to choose when you search.",
+                AutoSize = false, Width = 360, Height = 40, ForeColor = UiTheme.Muted
+            }, null);
+            AddSection(sections, trade);
             var popup = Section("COMPARISON POPUP");
             timeoutSecLabel.AutoSize = false;
             timeoutSecLabel.Width = 330;
@@ -370,6 +368,7 @@ namespace Poe2ItemCompanion
         private void PopulateFields()
         {
             _pobPathBox.Text = _config.PobPath;
+            _gemIconDirectoryBox.Text = _config.GemIconDirectory ?? "";
             _buildDirectoryBox.Text = _config.BuildDirectory;
             _buildPathBox.Text = _config.BuildFilePath;
             _autoDetectBuildBox.Checked = _config.AutoDetectLatestBuild;
@@ -385,18 +384,13 @@ namespace Poe2ItemCompanion
                 _keyDropdown.SelectedIndex = 0;
             }
 
-            _gemCtrlBox.Checked = (_config.GemOverlayHotkeyModifiers & 2) != 0;
-            _gemAltBox.Checked = (_config.GemOverlayHotkeyModifiers & 1) != 0;
-            _gemShiftBox.Checked = (_config.GemOverlayHotkeyModifiers & 4) != 0;
-            if (_config.GemOverlayHotkeyKey == 0) _gemKeyDropdown.SelectedIndex = 0;
-            else _gemKeyDropdown.SelectedItem = (Keys)_config.GemOverlayHotkeyKey;
-            if (_gemKeyDropdown.SelectedIndex == -1) _gemKeyDropdown.SelectedIndex = 0;
-            _treeCtrlBox.Checked = (_config.PassiveOverlayHotkeyModifiers & 2) != 0;
-            _treeAltBox.Checked = (_config.PassiveOverlayHotkeyModifiers & 1) != 0;
-            _treeShiftBox.Checked = (_config.PassiveOverlayHotkeyModifiers & 4) != 0;
-            if (_config.PassiveOverlayHotkeyKey == 0) _treeKeyDropdown.SelectedIndex = 0;
-            else _treeKeyDropdown.SelectedItem = (Keys)_config.PassiveOverlayHotkeyKey;
-            if (_treeKeyDropdown.SelectedIndex == -1) _treeKeyDropdown.SelectedIndex = 0;
+            _selectorCtrlBox.Checked = (_config.OverlaySelectorHotkeyModifiers & 2) != 0;
+            _selectorAltBox.Checked = (_config.OverlaySelectorHotkeyModifiers & 1) != 0;
+            _selectorShiftBox.Checked = (_config.OverlaySelectorHotkeyModifiers & 4) != 0;
+            if (_config.OverlaySelectorHotkeyKey == 0) _selectorKeyDropdown.SelectedIndex = 0;
+            else _selectorKeyDropdown.SelectedItem = (Keys)_config.OverlaySelectorHotkeyKey;
+            if (_selectorKeyDropdown.SelectedIndex == -1) _selectorKeyDropdown.SelectedIndex = 0;
+            _tradeLeagueBox.Text = _config.TradeLeague ?? "";
 
             _timeoutBox.Value = Math.Max(0, Math.Min(60, _config.PopupTimeoutSeconds));
 
@@ -442,6 +436,9 @@ namespace Poe2ItemCompanion
                     throw new InvalidDataException("Select the PoB installation for " + _config.GameName + ".");
                 string folder = _buildDirectoryBox.Text.Trim();
                 if (folder.Length > 0 && !Directory.Exists(folder)) throw new DirectoryNotFoundException("Build directory does not exist: " + folder);
+                string icons = _gemIconDirectoryBox.Text.Trim();
+                if (icons.Length > 0 && !Directory.Exists(GemIconCache.DiscoverDirectory(icons, _config.Game, AppDomain.CurrentDomain.BaseDirectory)))
+                    throw new DirectoryNotFoundException("Gem image directory does not exist: " + icons);
                 string file = _buildPathBox.Text.Trim();
                 bool fileSelected = (!_config.UsesShareCode && !_config.UsesGggBuild)
                     || !string.Equals(file, _config.BuildFilePath ?? "", StringComparison.OrdinalIgnoreCase);
@@ -470,33 +467,23 @@ namespace Poe2ItemCompanion
                 return;
             }
 
-            int gemModifiers = (_gemCtrlBox.Checked ? 2 : 0) | (_gemAltBox.Checked ? 1 : 0) | (_gemShiftBox.Checked ? 4 : 0);
-            int gemKey = _gemKeyDropdown.SelectedItem is Keys ? (int)(Keys)_gemKeyDropdown.SelectedItem : 0;
-            if (gemKey != 0 && gemModifiers == 0)
+            int selectorModifiers = (_selectorCtrlBox.Checked ? 2 : 0) | (_selectorAltBox.Checked ? 1 : 0) | (_selectorShiftBox.Checked ? 4 : 0);
+            int selectorKey = _selectorKeyDropdown.SelectedItem is Keys ? (int)(Keys)_selectorKeyDropdown.SelectedItem : 0;
+            if (selectorKey != 0 && selectorModifiers == 0)
             {
-                MessageBox.Show("Please select at least one modifier for the gem overlay key, or disable it.", "Invalid Hotkey", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("Please select at least one modifier for the overlay selector key, or disable it.", "Invalid Hotkey", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
-            if (gemKey != 0 && gemKey == (int)(Keys)_keyDropdown.SelectedItem && gemModifiers == modifiers)
+            if (selectorKey != 0 && ((selectorKey == (int)(Keys)_keyDropdown.SelectedItem && selectorModifiers == modifiers)
+                || (selectorKey == _config.GemDetectHotkeyKey && selectorModifiers == _config.GemDetectHotkeyModifiers)
+                || (selectorKey == _config.TreeDetectHotkeyKey && selectorModifiers == _config.TreeDetectHotkeyModifiers)))
             {
-                MessageBox.Show("The gem overlay key must differ from the compare hotkey.", "Invalid Hotkey", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            int treeModifiers = (_treeCtrlBox.Checked ? 2 : 0) | (_treeAltBox.Checked ? 1 : 0) | (_treeShiftBox.Checked ? 4 : 0);
-            int treeKey = _treeKeyDropdown.SelectedItem is Keys ? (int)(Keys)_treeKeyDropdown.SelectedItem : 0;
-            if (treeKey != 0 && treeModifiers == 0)
-            {
-                MessageBox.Show("Please select at least one modifier for the passive overlay key, or disable it.", "Invalid Hotkey", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-            if (treeKey != 0 && ((treeKey == (int)(Keys)_keyDropdown.SelectedItem && treeModifiers == modifiers) || (treeKey == gemKey && treeModifiers == gemModifiers)))
-            {
-                MessageBox.Show("The passive overlay key must differ from the compare and gem overlay keys.", "Invalid Hotkey", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("The overlay selector key must differ from the compare and detection-spot shortcuts.", "Invalid Hotkey", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
             _config.PobPath = _pobPathBox.Text.Trim();
+            _config.GemIconDirectory = _gemIconDirectoryBox.Text.Trim();
             _config.BuildDirectory = string.IsNullOrWhiteSpace(_buildDirectoryBox.Text)
                 ? GameIdentity.FindBuildDirectory(_config.PobPath, _config.Game) : _buildDirectoryBox.Text.Trim();
             string newBuildPath = _buildPathBox.Text.Trim();
@@ -510,10 +497,10 @@ namespace Poe2ItemCompanion
             _config.HotkeyModifiers = modifiers;
             _config.HotkeyKey = (int)(Keys)_keyDropdown.SelectedItem;
             _config.PopupTimeoutSeconds = (int)_timeoutBox.Value;
-            _config.GemOverlayHotkeyModifiers = gemModifiers;
-            _config.GemOverlayHotkeyKey = gemKey;
-            _config.PassiveOverlayHotkeyModifiers = treeModifiers;
-            _config.PassiveOverlayHotkeyKey = treeKey;
+            _config.OverlaySelectorHotkeyModifiers = selectorModifiers;
+            _config.OverlaySelectorHotkeyKey = selectorKey;
+            _config.OverlaySelectorMigrated = true;
+            _config.TradeLeague = _tradeLeagueBox.Text.Trim();
 
             try { _config.Save(); }
             catch (Exception ex) { MessageBox.Show("Settings were not applied: " + ex.Message, "Save failed", MessageBoxButtons.OK, MessageBoxIcon.Error); return; }

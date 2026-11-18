@@ -1,6 +1,8 @@
 param(
     [string]$Poe1Path,
     [string]$Poe2Path,
+    [ValidateSet('both', 'poe1', 'poe2')]
+    [string]$Game = 'both',
     [switch]$ValidateOnly
 )
 $ErrorActionPreference = 'Stop'
@@ -8,6 +10,8 @@ $template = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'pob_import_bridge
 $utf8 = New-Object System.Text.UTF8Encoding($false)
 $stamp = (Get-Date -Format 'yyyyMMdd-HHmmss-fff') + '-' + [Guid]::NewGuid().ToString('N').Substring(0, 8)
 
+if ($Game -eq 'poe1') { $Poe2Path = $null }
+if ($Game -eq 'poe2') { $Poe1Path = $null }
 if (-not $Poe1Path -and -not $Poe2Path) {
     throw 'Select at least one PoB folder with -Poe1Path or -Poe2Path.'
 }
@@ -120,6 +124,9 @@ foreach ($entry in @(@{ Path = $Poe1Path; Game = 'poe1'; Port = 49171 }, @{ Path
             if (Test-Path -LiteralPath $update.Path) {
                 $update.Backup = $update.Path + '.companion-backup-' + $stamp
                 [IO.File]::Copy($update.Path, $update.Backup, $false)
+                if ((Get-FileHash -LiteralPath $update.Backup).Hash -ne (Get-FileHash -LiteralPath $update.Path).Hash) {
+                    throw "Source backup verification failed: $($update.Backup). No source files written for this installation."
+                }
                 Write-Output "Backup: $($update.Backup)"
             }
         }

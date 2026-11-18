@@ -60,6 +60,7 @@ namespace Poe2ItemCompanion
         // Build tab
         private TabControl _tabs;
         private GuideBuildView _guideBuildView;
+        internal GuideBuildView GuideView { get { return _guideBuildView; } }
         private RichTextBox _summaryBox;
         private ListBox _gearList;
         private TextBox _gearItemBox;
@@ -87,6 +88,11 @@ namespace Poe2ItemCompanion
             RefreshBuildDropdown();
             ReloadActiveBuild(false);
             UpdateStatus();
+        }
+
+        public void ToggleQuestOverlay()
+        {
+            _guideBuildView.ToggleQuestOverlay();
         }
 
         public void SetConfig(AppConfig config)
@@ -607,7 +613,7 @@ namespace Poe2ItemCompanion
             Update();
         }
 
-        private async System.Threading.Tasks.Task ImportViaPob()
+        internal async System.Threading.Tasks.Task ImportViaPob()
         {
             if (IsBusy) return;
             _bridgeBusy = true;

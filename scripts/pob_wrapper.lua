@@ -334,8 +334,10 @@ end
 local function itemAffixes(item)
     local lines = {}
     if not item then return arr(lines) end
-    for _, group in ipairs({ item.runeModLines or {}, item.enchantModLines or {},
-        item.implicitModLines or {}, item.explicitModLines or {} }) do
+    local groups = { { item.runeModLines or {}, "rune" }, { item.enchantModLines or {}, "enchant" },
+        { item.implicitModLines or {}, "implicit" }, { item.explicitModLines or {}, "explicit" } }
+    for _, entry in ipairs(groups) do
+        local group, kind = entry[1], entry[2]
         for _, mod in ipairs(group) do
             if item:CheckModLineVariant(mod) then
                 local text = itemLib.applyRange(mod.line, mod.range or main.defaultItemAffixQuality, 1, mod.corruptedRange)
@@ -344,7 +346,13 @@ local function itemAffixes(item)
                     table.insert(lines, {
                         text = clean(text),
                         understood = not mod.extra and mod.modList ~= nil and #mod.modList > 0,
-                        scalable = not item.catalyst
+                        scalable = not item.catalyst,
+                        kind = kind,
+                        crafted = mod.crafted and kind == "explicit" or false,
+                        fractured = mod.fractured and true or false,
+                        exarch = mod.exarch and true or false,
+                        eater = mod.eater and true or false,
+                        synthesis = mod.synthesis and true or false
                     })
                 end
             end
@@ -763,6 +771,10 @@ function pobCompanion.exportBuildDetails()
                 end
             end
             table.insert(gems, {
+                color = gd and ((game == "poe1" and gd.grantedEffect and gd.grantedEffect.color)
+                    or ((gd.reqStr or 0) > (gd.reqDex or 0) and (gd.reqStr or 0) > (gd.reqInt or 0) and 1)
+                    or ((gd.reqDex or 0) > (gd.reqStr or 0) and (gd.reqDex or 0) > (gd.reqInt or 0) and 2)
+                    or ((gd.reqInt or 0) > (gd.reqStr or 0) and (gd.reqInt or 0) > (gd.reqDex or 0) and 3)) or 0,
                 requiredLevel = game == "poe1" and gd and gd.grantedEffect and gd.grantedEffect.levels
                     and gd.grantedEffect.levels[1] and gd.grantedEffect.levels[1].levelRequirement or nil,
                 targetRequiredLevel = game == "poe1" and gd and gd.grantedEffect and gd.grantedEffect.levels
@@ -890,9 +902,22 @@ function pobCompanion.exportBuildDetails()
             if not item and not mainSlot then return end
             if not item and slot.shown and not slot.shown() then return end
             local raw = nil
+            local socketCount, maxLinks, influences = 0, 0, arr()
             if item then
                 local ok, r = pcall(function() return item:BuildRaw() end)
                 raw = (ok and r) or item.raw
+                local groupSizes = {}
+                for _, socket in ipairs(item.sockets or {}) do
+                    socketCount = socketCount + 1
+                    local key = socket.group or 0
+                    groupSizes[key] = (groupSizes[key] or 0) + 1
+                    if groupSizes[key] > maxLinks then maxLinks = groupSizes[key] end
+                end
+                if type(influenceInfo) == "table" then
+                    for _, info in ipairs(influenceInfo) do
+                        if info.key and item[info.key] then table.insert(influences, info.display or info.key) end
+                    end
+                end
             end
             table.insert(gear, {
                 slotName = name,
@@ -902,6 +927,15 @@ function pobCompanion.exportBuildDetails()
                 baseName = item and item.baseName or nil,
                 raw = clean(raw),
                 affixes = itemAffixes(item),
+                itemLevel = item and tonumber(item.itemLevel) or nil,
+                levelRequirement = item and item.requirements and tonumber(item.requirements.level) or nil,
+                quality = item and tonumber(item.quality) or nil,
+                socketCount = socketCount,
+                maxLinks = maxLinks,
+                corrupted = item and item.corrupted and true or false,
+                mirrored = item and item.mirrored and true or false,
+                influences = influences,
+                itemType = item and (item.type or (item.base and item.base.type)) or nil,
                 inactiveWeaponSet = (slot.weaponSet and itemsTab.activeItemSet and ((itemsTab.activeItemSet.useSecondWeaponSet and 2 or 1) ~= slot.weaponSet)) and true or false,
                 isJewel = item and item.type == "Jewel" or false
             })

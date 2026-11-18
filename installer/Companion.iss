@@ -39,11 +39,13 @@ Source: "..\bin\{#Executable}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "installed.mode"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\NOTICE.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\USER-GUIDE.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\scripts\pob_wrapper.lua"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "..\scripts\install-pob-bridge.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "..\scripts\pob_import_bridge.lua"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "..\data\ggg_passive_ids.tsv"; DestDir: "{app}\data"; Flags: ignoreversion
 Source: "..\data\poe1_gem_acquisition.json"; DestDir: "{app}\data"; Flags: ignoreversion
+Source: "..\data\campaign_quests.json"; DestDir: "{app}\data"; Flags: ignoreversion
 Source: "..\data\poenavi-LICENSE.txt"; DestDir: "{app}\data"; Flags: ignoreversion
 
 [Tasks]
@@ -51,6 +53,7 @@ Name: desktopicon; Description: "Create a desktop shortcut"; Flags: unchecked
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#Executable}"; WorkingDir: "{app}"
+Name: "{autoprograms}\{#AppName} - User Guide"; Filename: "{app}\USER-GUIDE.txt"; WorkingDir: "{app}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#Executable}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]

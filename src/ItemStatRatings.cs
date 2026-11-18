@@ -13,6 +13,12 @@ namespace Poe2ItemCompanion
         public string Text { get; set; }
         public bool Understood { get; set; }
         public bool Scalable { get; set; }
+        public string Kind { get; set; }        // rune, enchant, implicit or explicit (PoB mod line group)
+        public bool Crafted { get; set; }
+        public bool Fractured { get; set; }
+        public bool Exarch { get; set; }
+        public bool Eater { get; set; }
+        public bool Synthesis { get; set; }
     }
 
     public class ItemStatRating

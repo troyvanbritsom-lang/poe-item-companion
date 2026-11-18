@@ -35,6 +35,15 @@ namespace Poe2ItemCompanion
         public bool IsJewel { get; set; }
         public List<string> Priorities { get; set; }   // .build slot note stat priority lines
         public bool FromNotes { get; set; }             // .build note, not a real item
+        public int? ItemLevel { get; set; }
+        public int? LevelRequirement { get; set; }
+        public int? Quality { get; set; }
+        public int SocketCount { get; set; }
+        public int MaxLinks { get; set; }
+        public bool Corrupted { get; set; }
+        public bool Mirrored { get; set; }
+        public List<string> Influences { get; set; }
+        public string ItemType { get; set; }
     }
 
     public class SkillGem
@@ -49,6 +58,7 @@ namespace Poe2ItemCompanion
         public bool Enabled { get; set; }
         public int? Tier { get; set; }
         public string Kind { get; set; }               // Skill, Support or Spirit (PoB2 gem data)
+        public int Color { get; set; }                // 1 strength, 2 dexterity, 3 intelligence, 0 unknown
         public string GemType { get; set; }
         public string WeaponRequirements { get; set; }
         public string Tags { get; set; }

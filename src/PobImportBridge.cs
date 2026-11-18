@@ -5,6 +5,8 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 
 namespace Poe2ItemCompanion
 {
@@ -37,6 +39,40 @@ namespace Poe2ItemCompanion
 
     internal static class PobImportBridge
     {
+        [StructLayout(LayoutKind.Sequential)]
+        private struct FileIdentity
+        {
+            public uint Attributes;
+            public System.Runtime.InteropServices.ComTypes.FILETIME Creation, Access, Write;
+            public uint Volume, SizeHigh, SizeLow, Links, IndexHigh, IndexLow;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetFileInformationByHandle(SafeFileHandle file, out FileIdentity identity);
+
+        private static void ProtectGuide(AppConfig config, string current)
+        {
+            string guide = config.GetGuideFilePath();
+            if (string.IsNullOrWhiteSpace(guide)) return;
+            guide = Path.GetFullPath(guide);
+            bool same = string.Equals(current, guide, StringComparison.OrdinalIgnoreCase);
+            if (!same && File.Exists(guide))
+            {
+                using (var currentFile = File.Open(current, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                using (var guideFile = File.Open(guide, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                {
+                    FileIdentity a, b;
+                    if (!GetFileInformationByHandle(currentFile.SafeFileHandle, out a)
+                        || !GetFileInformationByHandle(guideFile.SafeFileHandle, out b))
+                        throw new IOException("Cannot verify that CURRENT and GUIDE are different files.",
+                            new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()));
+                    same = a.Volume == b.Volume && a.IndexHigh == b.IndexHigh && a.IndexLow == b.IndexLow;
+                }
+            }
+            if (same)
+                throw new InvalidOperationException("CURRENT and GUIDE refer to the same file. Choose a separate CURRENT XML before importing; the guide must not be overwritten.");
+        }
+
         internal static int Port(GameId game) { return game == GameId.Poe1 ? 49171 : 49172; }
 
         internal static string Hex(byte[] bytes)
@@ -126,6 +162,7 @@ namespace Poe2ItemCompanion
             string path = Path.GetFullPath(config.CurrentBuildFilePath);
             if (!File.Exists(path) || !path.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("The configured CURRENT build must be an existing PoB XML file.");
+            ProtectGuide(config, path);
             string error;
             if (!GameIdentity.ValidateBuild(File.ReadAllText(path), config.Game, out error))
                 throw new InvalidOperationException(error);
@@ -162,7 +199,8 @@ namespace Poe2ItemCompanion
         {
             // Capture the selected profile before leaving the UI thread.
             var snapshot = new AppConfig { Game = config.Game, PobPath = config.PobPath,
-                CurrentBuildFilePath = config.CurrentBuildFilePath, CurrentCharacterCode = config.CurrentCharacterCode };
+                CurrentBuildFilePath = config.CurrentBuildFilePath, CurrentCharacterCode = config.CurrentCharacterCode,
+                BuildSource = config.BuildSource, BuildFilePath = config.BuildFilePath, GggBuildFilePath = config.GggBuildFilePath };
             return Task.Run(async () =>
             {
                 string token = ReadCredential(snapshot.PobPath, snapshot.Game);

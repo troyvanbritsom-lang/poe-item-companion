@@ -5,7 +5,8 @@ using System.Windows.Forms;
 
 namespace Poe2ItemCompanion
 {
-    // One in-game overlay with its toggle hotkey, its "mark detection spot" hotkey and screen-spot auto-open.
+    // One in-game overlay with its "mark detection spot" hotkey and screen-spot auto-open.
+    // Showing/hiding by key goes through the single overlay selector hotkey (TrayApplicationContext).
     public class OverlayFeature : IDisposable
     {
         public string Title;                                // e.g. "Gem overlay"
@@ -15,11 +16,11 @@ namespace Poe2ItemCompanion
         public string SpotPrefix;
         public Func<AppConfig, bool> GetAutoShow;
         public Action<AppConfig, bool> SetAutoShow;
-        public Func<AppConfig, int> ToggleModifiers, ToggleKey, MarkModifiers, MarkKey;
+        public Func<AppConfig, int> MarkModifiers, MarkKey;
         public bool GemCutter;
 
         private AppConfig _config;
-        private HotkeyManager _toggleHotkey, _markHotkey;
+        private HotkeyManager _markHotkey;
         private GemCutterDetector _detector;
         private OverlayForm _overlay;
         private int _misses;
@@ -27,15 +28,14 @@ namespace Poe2ItemCompanion
         private Action _menuChanged;
 
         public OverlayForm Overlay { get { return _overlay; } }
+        public bool IsOpen { get { return _overlay != null && !_overlay.IsDisposed && _overlay.Visible; } }
         public int SpotCount { get { return _detector == null ? 0 : _detector.SpotCount; } }
         public bool AutoShow { get { return (!GemCutter || _config.Game == GameId.Poe2) && GetAutoShow(_config); } }
 
-        public void Start(AppConfig config, int toggleId, int markId, NotifyIcon notify, Action menuChanged)
+        public void Start(AppConfig config, int markId, NotifyIcon notify, Action menuChanged)
         {
             _notify = notify;
             _menuChanged = menuChanged;
-            _toggleHotkey = new HotkeyManager(toggleId);
-            _toggleHotkey.HotkeyPressed += Toggle;
             _markHotkey = new HotkeyManager(markId);
             _markHotkey.HotkeyPressed += MarkSpot;
             SetConfig(config);
@@ -54,7 +54,6 @@ namespace Poe2ItemCompanion
         // 'taken' holds hotkeys already registered (modifiers << 16 | key) so duplicates are skipped.
         public void RegisterHotkeys(HashSet<int> taken)
         {
-            Register(_toggleHotkey, ToggleModifiers(_config), ToggleKey(_config), Title, taken, true);
             Register(_markHotkey, MarkModifiers(_config), GemCutter && _config.Game == GameId.Poe1 ? 0 : MarkKey(_config), Title + " detection spot", taken, false);
         }
 
@@ -175,7 +174,6 @@ namespace Poe2ItemCompanion
 
         public void Dispose()
         {
-            if (_toggleHotkey != null) _toggleHotkey.Dispose();
             if (_markHotkey != null) _markHotkey.Dispose();
             if (_overlay != null) _overlay.Dispose();
             if (_detector != null) _detector.Dispose();

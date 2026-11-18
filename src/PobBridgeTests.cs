@@ -20,6 +20,8 @@ namespace Poe2ItemCompanion
         [DllImport("lua51.dll", CallingConvention = CallingConvention.Cdecl)] private static extern IntPtr lua_tolstring(IntPtr state, int index, out UIntPtr size);
         [DllImport("lua51.dll", CallingConvention = CallingConvention.Cdecl)] private static extern void lua_close(IntPtr state);
         [DllImport("lua51.dll", CallingConvention = CallingConvention.Cdecl)] private static extern void lua_settop(IntPtr state, int top);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern bool CreateHardLink(string link, string target, IntPtr security);
 
         private static void Require(bool value, string message)
         {
@@ -38,7 +40,7 @@ namespace Poe2ItemCompanion
 
         private static string LuaString(string text) { return "[=[" + text + "]=]"; }
 
-        public static int Run(string poe1Build = null, string poe2Build = null)
+        public static int Run(string poe1Build = null, string poe2Build = null, bool fixturesOnly = false)
         {
             string directory = Path.Combine(Path.GetTempPath(), "CompanionBridgeTests-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(directory);
@@ -48,6 +50,7 @@ namespace Poe2ItemCompanion
                 string root = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".."));
                 TestProtocol(directory);
                 TestInstaller(root, directory);
+                if (fixturesOnly) return 0;
                 string pob1 = GameIdentity.DefaultPobPath(GameId.Poe1);
                 string pob2 = GameIdentity.DefaultPobPath(GameId.Poe2);
                 SetDllDirectory(pob1);
@@ -116,8 +119,8 @@ namespace Poe2ItemCompanion
                 originals[paths[game]] = main;
                 File.WriteAllText(Path.Combine(modules, "Main.lua"), main);
                 File.WriteAllText(Path.Combine(modules, "Build.lua"), build);
-                File.Copy(Path.Combine(GameIdentity.DefaultPobPath(game == 0 ? GameId.Poe1 : GameId.Poe2),
-                    "Modules", "Common.lua"), Path.Combine(modules, "Common.lua"));
+                File.WriteAllText(Path.Combine(modules, "Common.lua"),
+                    "function coroutine._list()\nend\nactive_coroutines[co] = true\n");
                 File.WriteAllText(Path.Combine(paths[game], "lua", "sha2.lua"), "");
                 string keyPath = Path.Combine(modules, "CompanionBridge.key");
                 File.WriteAllText(keyPath, new string('a', 64) + "\n");
@@ -172,6 +175,21 @@ namespace Poe2ItemCompanion
                         "Fixture installer missed a pre-write source backup.");
                 }
             }
+            string poe1Main = Path.Combine(paths[0], "Modules", "Main.lua");
+            string poe1Before = File.ReadAllText(poe1Main);
+            int poe1Backups = Directory.GetFiles(Path.GetDirectoryName(poe1Main), "*.companion-backup-*").Length;
+            using (var installer = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                "powershell.exe", arguments + " -Game poe2") { UseShellExecute = false, CreateNoWindow = true,
+                RedirectStandardOutput = true, RedirectStandardError = true }))
+            {
+                var output = installer.StandardOutput.ReadToEndAsync();
+                var error = installer.StandardError.ReadToEndAsync();
+                Require(installer.WaitForExit(15000) && installer.ExitCode == 0,
+                    "PoE2-only fixture install failed: " + output.Result + error.Result);
+            }
+            Require(File.ReadAllText(poe1Main) == poe1Before && Directory.GetFiles(
+                Path.GetDirectoryName(poe1Main), "*.companion-backup-*").Length == poe1Backups,
+                "PoE2-only installation touched the other game.");
             Console.WriteLine("PASSED: isolated installer fixtures for both games, pristine/old-hook upgrade, shutdown/reapply idempotence, backups and key/ACL preservation.");
         }
 
@@ -344,6 +362,34 @@ namespace Poe2ItemCompanion
                 config.Game = game;
                 File.WriteAllText(file, "<" + GameIdentity.Root(game) + "><Build/></" + GameIdentity.Root(game) + ">");
                 File.WriteAllText(Path.Combine(directory, "Modules", "Build.lua"), "dbXML[1].elem ~= \"" + GameIdentity.Root(game) + "\"");
+                config.BuildSource = AppConfig.SourceFile;
+                config.BuildFilePath = Path.Combine(directory, ".", "CURRENT.XML");
+                Reject(() => PobImportBridge.Request(config, token, token, token), "Same-file GUIDE overwrite accepted.");
+                var blocked = PobImportBridge.ImportAtPortAsync(config, new Progress<string>(), 1);
+                config.BuildFilePath = null;
+                try { blocked.GetAwaiter().GetResult(); throw new Exception("GUIDE snapshot protection was lost."); }
+                catch (InvalidOperationException ex) { Require(ex.Message.Contains("same file"), "GUIDE refused after networking or lost snapshot."); }
+                string alias = Path.Combine(directory, "guide-alias.xml");
+                Require(CreateHardLink(alias, file, IntPtr.Zero), "Could not create same-file hardlink fixture.");
+                try
+                {
+                    config.BuildFilePath = alias;
+                    Reject(() => PobImportBridge.Request(config, token, token, token), "Hardlinked GUIDE overwrite accepted.");
+                }
+                finally { File.Delete(alias); }
+                string separate = Path.Combine(directory, "separate-guide.xml");
+                File.Copy(file, separate, true);
+                config.BuildFilePath = separate;
+                PobImportBridge.Request(config, token, token, token);
+                config.BuildSource = AppConfig.SourceShareCode;
+                config.BuildFilePath = file;
+                PobImportBridge.Request(config, token, token, token);
+                config.BuildSource = AppConfig.SourceGggBuild;
+                config.GggBuildFilePath = file;
+                Reject(() => PobImportBridge.Request(config, token, token, token), "Active GGG guide overwrite accepted.");
+                config.GggBuildFilePath = null;
+                config.BuildFilePath = null;
+                config.BuildSource = AppConfig.SourceFile;
                 foreach (string response in new[] { "STATUS DONE", "ERROR BUILD", "STATUS INVALID", "SPOOF", "BADSTATUS",
                     "BEFORESEND", "AFTERSEND" })
                 {

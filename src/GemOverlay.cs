@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
@@ -17,7 +17,7 @@ namespace Poe2ItemCompanion
         private string _stage;
         private string _error;
 
-        public GemOverlay(AppConfig config) : base(config, 460) { }
+        public GemOverlay(AppConfig config) : base(config, 460) { ConfigureGemIcons(); }
 
         protected override string LoadingTitle { get { return "Gems needed - loading..."; } }
 
@@ -57,10 +57,10 @@ namespace Poe2ItemCompanion
         {
             string mark = e.NeedsCut ? "+" : e.IsUnderLevel || e.IsUnderQuality ? "^" : " ";
             string tab = e.Kind == "Support" ? "Support" : e.Kind == "Spirit" ? "Spirit" : string.IsNullOrEmpty(e.WeaponRequirements) ? "search name" : e.WeaponRequirements;
-            string name = (e.Kind == "Support" ? "  " : "") + e.Name;
+            string name = e.Name;
             if (e.Poe1)
-                return " " + mark + " " + name.PadRight(30) + " " + (e.Acquisition == null ? "unknown" : e.Acquisition.CompactLevel);
-            string text = " " + mark + " " + name.PadRight(26) + " " + GemCutting.Roman(e.Tier).PadRight(5) + tab;
+                return mark + " " + name + "  " + (e.Acquisition == null ? "unknown" : e.Acquisition.CompactLevel);
+            string text = mark + " " + name + "  " + GemCutting.Roman(e.Tier) + "  " + tab;
             if (!e.NeedsCut && e.CurrentLevel.HasValue) text += e.IsUnderLevel ? "  (L" + e.CurrentLevel + "/" + e.GuideLevel + ")" : "  (have)";
             return text;
         }
@@ -78,23 +78,24 @@ namespace Poe2ItemCompanion
             SetTitle("Gems needed - " + _stage + " (" + missing + " missing)");
             foreach (var g in _groups)
             {
-                if (!ShowAll && !g.NeedsWork) continue;
+                if (!ShowAll && !g.Entries.Any(e => e.NeedsCut)) continue;
                 AddLine(g.Label + (g.Main ? "  [main]" : "") + (g.Enabled ? "" : "  [disabled in guide]"), HeaderColor, true);
                 foreach (var e in g.Entries)
                 {
+                    if (!ShowAll && !e.NeedsCut) continue;
                     string details = e.Poe1 && e.Acquisition != null
                         ? e.Name + Environment.NewLine + e.Acquisition.Requirements + Environment.NewLine + Environment.NewLine
                             + e.Acquisition.Where.Replace("; ", Environment.NewLine) + Environment.NewLine + Environment.NewLine
                             + "Quest completion is unknown; check your quest log."
                         : null;
-                    AddLine(Row(e), e.NeedsCut ? MissingColor : e.IsUnderLevel || e.IsUnderQuality ? UnderColor : HaveColor, false, details);
+                    AddGemLine(Row(e), e.NeedsCut ? MissingColor : e.IsUnderLevel || e.IsUnderQuality ? UnderColor : HaveColor, e, details ?? Row(e));
                 }
             }
             if (LineCount == 0)
                 AddLine(missing == 0 ? "You have every gem this stage uses." : "Nothing to show.", HeaderColor, false);
             SetFooter((_config.Game == GameId.Poe1 ? "Hover gems for vendor/quest details. * quest unlock required. ? purchase unverified."
                 : "+ missing (gold)  ^ lower level (orange)  then: tier, gem cutter tab") + Environment.NewLine +
-                (_error ?? "Hotkey " + _config.GetGemOverlayHotkeyDisplayString() + " toggles; drag to move; 'all' shows complete groups."));
+                (_error ?? "Selector " + EquipmentOverlay.SelectorKeyText(_config) + " shows/hides; drag to move; 'all' also shows equipped gems and upgrade status."));
         }
     }
 }

@@ -106,15 +106,27 @@ namespace Poe2ItemCompanion
                 Contrast(UiTheme.Accent, UiTheme.Surface);
                 Contrast(UiTheme.Text, UiTheme.Input);
                 Contrast(UiTheme.Text, UiTheme.Primary);
+                Require(GemVisual.Border(0) == UiTheme.Muted && GemVisual.Border(99) == UiTheme.Muted &&
+                    GemVisual.Border(1) != GemVisual.Border(2) && GemVisual.Border(2) != GemVisual.Border(3),
+                    "Gem color fallback or attribute colors changed.");
                 TestChrome(screenshots);
+                TestGemIcons(directory);
+                using (var picture = new Bitmap(28, 14))
+                using (var graphics = Graphics.FromImage(picture))
+                {
+                    graphics.Clear(Color.Magenta);
+                    picture.Save(Path.Combine(directory, "Fireball.png"));
+                }
                 foreach (GameId game in new[] { GameId.Poe1, GameId.Poe2 })
                 {
                     var config = new AppConfig { Game = game, DisableSave = true, BuildDirectory = directory,
+                        GemIconDirectory = directory,
                         PobPath = directory, GameLogPath = Path.Combine(directory, "missing.log"),
                         AutoDetectLatestBuild = false, AutoReloadBuild = false, GemAutoShow = false, PassiveAutoShow = false };
                     TestSettings(config, screenshots);
                     TestDashboard(config, screenshots);
                     TestOverlays(config, screenshots);
+                    QuestPlannerTests.TestUi(config, screenshots);
                 }
                 using (var log = new LogViewerForm())
                 {
@@ -129,7 +141,106 @@ namespace Poe2ItemCompanion
                 return 0;
             }
             catch (Exception ex) { Console.WriteLine("FAILED UI: " + ex); return 1; }
-            finally { Directory.Delete(directory); }
+            finally { File.Delete(Path.Combine(directory, "Fireball.png")); Directory.Delete(directory); }
+        }
+
+        private static void TestGemIcons(string directory)
+        {
+            string folder = Path.Combine(directory, "icon-fixtures");
+            Directory.CreateDirectory(folder);
+            try
+            {
+                string app = Path.Combine(folder, "bin");
+                Directory.CreateDirectory(app);
+                string poe1 = Path.Combine(folder, "poe 1 gem");
+                Directory.CreateDirectory(poe1);
+                Require(GemIconCache.DiscoverDirectory(null, GameId.Poe1, app) == poe1, "Parent gem folder discovery failed.");
+                Require(GemIconCache.DiscoverDirectory(null, GameId.Poe2, app) != poe1, "PoE1 folder leaked into PoE2.");
+                Directory.CreateDirectory(Path.Combine(app, "poe 1 gem"));
+                Require(GemIconCache.DiscoverDirectory(null, GameId.Poe1, app) == Path.Combine(app, "poe 1 gem"), "Executable-side directory should take precedence.");
+                Require(GemIconCache.DiscoverDirectory("..\\poe 1 gem", GameId.Poe1, app) == poe1, "Relative configured path failed.");
+                string poe2 = Path.Combine(folder, "poe2_gems");
+                Directory.CreateDirectory(poe2);
+                try
+                {
+                    Require(GemIconCache.DiscoverDirectory(null, GameId.Poe2, app) == poe2,
+                        "PoE2 underscore-named gem folder was not discovered in the app's parent directory.");
+                    Require(GemIconCache.DiscoverDirectory(null, GameId.Poe1, app) != poe2,
+                        "PoE2 underscore-named images leaked into PoE1.");
+                    string beside = Path.Combine(app, "poe2_gems");
+                    Directory.CreateDirectory(beside);
+                    try
+                    {
+                        Require(GemIconCache.DiscoverDirectory(null, GameId.Poe2, app) == beside,
+                            "Executable-side underscore folder did not take precedence.");
+                        Require(GemIconCache.DiscoverDirectory(poe2, GameId.Poe2, app) == poe2,
+                            "Automatic discovery overrode the explicitly configured gem folder.");
+                    }
+                    finally { Directory.Delete(beside); }
+                }
+                finally { Directory.Delete(poe2); }
+                foreach (string category in new[] { "skill_gems", "support_gems", "awakened_support_gems", "transfigured_skill_gems", "vaal_skill_gems" })
+                    Directory.CreateDirectory(Path.Combine(poe1, category));
+                using (var picture = new Bitmap(24, 12))
+                {
+                    using (var graphics = Graphics.FromImage(picture)) graphics.Clear(Color.Magenta);
+                    foreach (string name in new[] { "skill_gems\\Fireball inventory icon.png",
+                        "support_gems\\Faster_Attacks_Support_inventory_icon.png",
+                        "awakened_support_gems\\Awakened Added Fire Damage Support inventory icon.png",
+                        "transfigured_skill_gems\\Ice Nova of Frostbolts inventory icon.png",
+                        "vaal_skill_gems\\Vaal Fireball inventory icon.png", "Ice Nova.png",
+                        "Barrage.png", "Duplicate.png", "skill_gems\\Duplicate_inventory_icon.png" })
+                        picture.Save(Path.Combine(poe1, name));
+                }
+                File.WriteAllText(Path.Combine(poe1, "Broken.png"), "not an image");
+                using (var cache = new GemIconCache(new AppConfig { Game = GameId.Poe1, GemIconDirectory = poe1 }))
+                {
+                    var image = cache.Get("Fireball");
+                    Require(image != null && image.Width == 24 && image.Height == 12 && image.GetPixel(0, 0).ToArgb() == Color.Magenta.ToArgb(),
+                        "Local image content/dimensions lost.");
+                    Require(object.ReferenceEquals(image, cache.Get("FIREBALL")), "Image was not cached.");
+                    Require(cache.Get("Faster Attacks Support") != null, "Exact support image lookup failed.");
+                    Require(object.ReferenceEquals(cache.Get("Faster Attacks", "Support"), cache.Get("Faster Attacks Support", "Support")) &&
+                        cache.Get("Faster Attacks", "Support") != null, "PoE1 support metadata did not select the canonical support image.");
+                    Require(cache.Get("Faster Attacks", "Skill") == null && cache.Get("Faster Attacks") == null &&
+                        cache.Get("Barrage", "Support") == null && cache.Get("Barrage", "Skill") != null,
+                        "Support artwork matching guessed an alias without metadata or reused active-gem artwork.");
+                    Require(cache.Get("Awakened Added Fire Damage", "Support") != null &&
+                        cache.Get("Ice Nova of Frostbolts", "Skill") != null && cache.Get("Vaal Fireball", "Skill") != null,
+                        "Categorized awakened, transfigured or Vaal artwork was not found recursively.");
+                    Require(cache.Get("Missing") == null && cache.Get("Duplicate") == null && cache.Get("Broken") == null &&
+                        cache.Get("Barrage Support") == null && cache.Get("Ice Nova of Deep Freeze") == null, "Missing/invalid/ambiguous/unsafe-alias fallback failed.");
+                    File.Delete(Path.Combine(poe1, "skill_gems", "Fireball inventory icon.png"));
+                    Require(cache.Get("Fireball") == image, "Cached source was locked or lost.");
+                    using (var output = new Bitmap(40, 40))
+                    using (var graphics = Graphics.FromImage(output))
+                    {
+                        graphics.Clear(Color.Magenta);
+                        GemVisual.Draw(graphics, new Rectangle(0, 0, 40, 40), 3, "Skill");
+                        for (int x = 0; x < output.Width; x++)
+                            for (int y = 0; y < output.Height; y++)
+                                Require(output.GetPixel(x, y).ToArgb() == Color.Magenta.ToArgb(),
+                                    "Missing artwork drew a placeholder instead of leaving the row unchanged.");
+                        graphics.Clear(Color.Transparent);
+                        GemVisual.Draw(graphics, new Rectangle(0, 0, 40, 40), 3, "Skill", image);
+                        Require(output.GetPixel(20, 20).ToArgb() == Color.Magenta.ToArgb() &&
+                            output.GetPixel(20, 5).ToArgb() != Color.Magenta.ToArgb(), "Local artwork was not drawn with aspect-preserving placement.");
+                    }
+                }
+                using (var cache = new GemIconCache(new AppConfig { Game = GameId.Poe2, GemIconDirectory = poe1 }))
+                    Require(cache.Get("Faster Attacks", "Support") == null && cache.Get("Faster Attacks Support", "Support") != null,
+                        "PoE1 support suffix handling leaked into PoE2.");
+            }
+            finally
+            {
+                string poe1 = Path.Combine(folder, "poe 1 gem");
+                foreach (string file in Directory.GetFiles(poe1, "*", SearchOption.AllDirectories)) File.Delete(file);
+                foreach (string category in Directory.GetDirectories(poe1)) Directory.Delete(category);
+                Directory.Delete(poe1);
+                Directory.Delete(Path.Combine(folder, "bin", "poe 1 gem"));
+                Directory.Delete(Path.Combine(folder, "bin"));
+                Directory.Delete(folder);
+            }
         }
 
         private static void TestChrome(string screenshots)
@@ -201,7 +312,7 @@ namespace Poe2ItemCompanion
                 {
                     Layout(form, size);
                     CheckRows(form);
-                    foreach (var input in new Control[] { Field<TextBox>(form, "_pobPathBox"), Field<TextBox>(form, "_buildDirectoryBox"), Field<TextBox>(form, "_buildPathBox"), Field<ComboBox>(form, "_buildDropdown") })
+                    foreach (var input in new Control[] { Field<TextBox>(form, "_pobPathBox"), Field<TextBox>(form, "_buildDirectoryBox"), Field<TextBox>(form, "_gemIconDirectoryBox"), Field<TextBox>(form, "_buildPathBox"), Field<ComboBox>(form, "_buildDropdown") })
                     {
                         var table = (TableLayoutPanel)input.Parent;
                         Require(table.GetColumn(input) == 1 && table.GetRow(input) > 0 && table.ColumnCount == 3, "Settings input is not in its labelled row.");
@@ -211,7 +322,21 @@ namespace Poe2ItemCompanion
                 Layout(form, new Size(760, 720));
                 Capture(form, screenshots, config.Game + "-settings");
                 Field<TextBox>(form, "_pobPathBox").Text = "edited test copy";
+                Require(Field<TextBox>(form, "_gemIconDirectoryBox").Text == config.GemIconDirectory, "Gem directory setting was not populated.");
+                Field<TextBox>(form, "_gemIconDirectoryBox").Text = "edited icon path";
+                Require(config.GemIconDirectory != "edited icon path", "Gem directory edits leaked into active profile.");
                 Require(config.PobPath == originalPath, "Settings edits leaked into active profile.");
+                var selectorKey = Field<ComboBox>(form, "_selectorKeyDropdown");
+                Require((config.OverlaySelectorHotkeyKey == 0 ? selectorKey.SelectedIndex == 0
+                        : selectorKey.SelectedItem is Keys && (int)(Keys)selectorKey.SelectedItem == config.OverlaySelectorHotkeyKey)
+                    && Field<CheckBox>(form, "_selectorCtrlBox").Checked == ((config.OverlaySelectorHotkeyModifiers & 2) != 0),
+                    "Overlay selector shortcut did not populate from the active profile.");
+                Require(Field<TextBox>(form, "_tradeLeagueBox").Text == (config.TradeLeague ?? ""), "Trade league did not populate.");
+                int selectorBefore = config.OverlaySelectorHotkeyKey;
+                selectorKey.SelectedIndex = 0;
+                Require(config.OverlaySelectorHotkeyKey == selectorBefore, "Disabling the selector shortcut before saving changed the active profile.");
+                Require(form.GetType().GetField("_questKeyDropdown", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance) == null,
+                    "Separate overlay toggle shortcut rows are still present.");
                 form.Scale(new SizeF(1.5f, 1.5f));
                 Application.DoEvents();
                 CheckRows(form);
@@ -274,13 +399,24 @@ namespace Poe2ItemCompanion
                 Require(Field<RichTextBox>(guideView, "_summary").Text.Contains("GUIDE BUILD") && Field<ListBox>(guideView, "_gear").Items.Count == 1,
                     "Themed guide lost content.");
                 var guideTabs = Children(guideView).OfType<TabControl>().First();
+                guideTabs.SelectedIndex = 2;
+                Application.DoEvents();
+                var skills = Field<SkillRows>(guideView, "_skills");
+                Require(skills.Items.Cast<SkillRows.Row>().Count(r => r.Gem != null) == 2 &&
+                    skills.Items.Cast<SkillRows.Row>().Any(r => r.Text.Contains("Support") && r.Gem != null && r.Gem.Color == 2),
+                    "Skill rows lost active/support gems or their color metadata.");
+                Require(skills.Items.Cast<SkillRows.Row>().Any(r => r.Text.Contains("Level 15, Quality 0%")) &&
+                    skills.AccessibleName == "Guide skills", "Skill details or accessibility label lost.");
+                Capture(form, screenshots, config.Game + "-skills");
                 guideTabs.SelectedIndex = 4;
                 Application.DoEvents();
                 Capture(form, screenshots, config.Game + "-guide-tree");
                 guideTabs.SelectedIndex = 5;
                 Application.DoEvents();
                 var gems = Field<ListView>(guideView, "_gemList");
-                Require(gems.Items.Count == 1 && gems.OwnerDraw && gems.ShowItemToolTips, "Themed gem checklist lost rows/tooltips.");
+                Require(gems.Items.Count == 0, "Default needed list retained equipped fixture gems.");
+                Field<CheckBox>(guideView, "_showEquipped").Checked = true;
+                Require(gems.Items.Count == 2 && gems.OwnerDraw && gems.ShowItemToolTips, "Themed gem checklist lost rows/tooltips.");
                 Capture(form, screenshots, config.Game + "-checklist");
                 Require(Children(form).OfType<TabControl>().All(t => t.DrawMode == TabDrawMode.OwnerDrawFixed), "Unthemed nested tabs.");
                 Invoke(form, "SetBusy", true, "Fixture operation");
@@ -322,7 +458,8 @@ namespace Poe2ItemCompanion
             details.Stats.Add(new StatValue { Key = "Life", Label = "Life", Value = 2480 });
             details.Gear.Add(new GearEntry { SlotName = "Boots", SlotLabel = "Boots", ItemName = "Fixture Boots", Rarity = "Rare", Raw = "Rarity: Rare\r\nFixture Boots\r\nDragonscale Boots\r\n+150 to maximum Life" });
             details.Skills.Add(new SkillGroup { Label = "Fireball", Main = true, Enabled = true, Slot = "Boots", Gems = new List<SkillGem> {
-                new SkillGem { Name = "Fireball", Kind = "Skill", Tier = 1, Level = guide ? 15 : 5, Quality = 0, Enabled = true } } });
+                new SkillGem { Name = "Fireball", Kind = "Skill", Color = 3, Tier = 1, Level = guide ? 15 : 5, Quality = 0, Enabled = true },
+                new SkillGem { Name = "Fixture Support", Kind = "Support", Color = 2, Tier = 1, Level = 1, Quality = 0, Enabled = true } } });
             details.Tree.Nodes.Add(new TreeNode { Id = 1, Name = "Witch", Type = "ClassStart", Alloc = true, X = 0, Y = 0, Stats = new List<string>() });
             details.Tree.Nodes.Add(new TreeNode { Id = 2, Name = "Small passive", Type = "Normal", Alloc = guide, X = 100, Y = 50, Stats = new List<string> { "+10 to Intelligence" } });
             details.Tree.Nodes.Add(new TreeNode { Id = 3, Name = "Fixture notable", Type = "Notable", Alloc = guide, X = 200, Y = 100, Stats = new List<string> { "10% increased maximum Life" } });
@@ -351,6 +488,17 @@ namespace Poe2ItemCompanion
                     foreach (Control action in title.Parent.Controls) Contained(action);
                     var body = (Panel)typeof(OverlayForm).GetField("_body", Private).GetValue(overlay);
                     Require(body.AutoScroll && body.AutoScrollMinSize.Height > 0, "Overlay lost scrollable rows.");
+                    if (overlay is GemOverlay)
+                    {
+                        Require(!overlay.BodyText.Contains("Fireball") && !overlay.BodyText.Contains("Fixture Support"),
+                            "Default gem overlay retained equipped fixture gems.");
+                        config.GemOverlayShowAll = true;
+                        typeof(OverlayForm).GetMethod("Render", Private).Invoke(overlay, null);
+                        Require(overlay.BodyText.Contains("Fireball") && overlay.BodyText.Contains("Fixture Support") &&
+                            GemCutting.PlanGroups(guide, current)[0].Entries.Any(e => e.Kind == "Support" && e.Color == 2),
+                            "Opt-in gem overlay lost rows or color metadata.");
+                        config.GemOverlayShowAll = false;
+                    }
                     Capture(overlay, screenshots, config.Game + (overlay is GemOverlay ? "-gems" : "-passives"));
                     overlay.Hide();
                 }

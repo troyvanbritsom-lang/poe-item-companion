@@ -15,6 +15,7 @@ namespace Poe2ItemCompanion
         [ScriptIgnore]
         public string GameName { get { return GameIdentity.Name(Game); } }
         public string PobPath { get; set; }
+        public string GemIconDirectory { get; set; }
         public string BuildFilePath { get; set; } // Legacy config name: GUIDE file only.
         public bool AutoDetectLatestBuild { get; set; }
         public int HotkeyModifiers { get; set; } // 2 = Control, 1 = Alt, 4 = Shift, 8 = Win
@@ -40,6 +41,15 @@ namespace Poe2ItemCompanion
         public int GemOverlayX { get; set; }
         public int GemOverlayY { get; set; }
         public bool GemOverlayShowAll { get; set; }     // also list gems the Current character already has
+        public List<string> ExcludedQuestIds { get; set; }
+        public bool QuestOverlayShowExcluded { get; set; }
+        public bool QuestOverlayFollowStory { get; set; }
+        public int QuestOverlayHotkeyModifiers { get; set; }
+        public int QuestOverlayHotkeyKey { get; set; } // 0 = disabled
+        public int QuestOverlayX { get; set; }
+        public int QuestOverlayY { get; set; }
+        public int QuestOverlayWidth { get; set; }
+        public int QuestOverlayHeight { get; set; }
         public bool GemAutoShow { get; set; }           // open the overlay when the gem cutting window is detected
         public List<string> GemDetectSpots { get; set; } // "x|y|w|h|file" screen spots of the gem cutting window
         public int GemDetectThreshold { get; set; }     // max mean RGB difference for a spot match
@@ -54,6 +64,65 @@ namespace Poe2ItemCompanion
         public List<string> TreeDetectSpots { get; set; }
         public int TreeDetectHotkeyModifiers { get; set; }
         public int TreeDetectHotkeyKey { get; set; }    // marks a passive tree detection spot at the mouse; 0 = disabled
+        // One global key opens the overlay selector. The legacy per-overlay toggle keys above are kept in
+        // config.json (never erased) but are no longer registered; the first load copies one of them here.
+        public int OverlaySelectorHotkeyModifiers { get; set; }
+        public int OverlaySelectorHotkeyKey { get; set; } // 0 = disabled
+        public bool OverlaySelectorMigrated { get; set; }
+        public int EquipmentOverlayX { get; set; }
+        public int EquipmentOverlayY { get; set; }
+        public bool EquipmentOverlayShowSwap { get; set; } // show the guide's weapon swap set instead of the main set
+        public string TradeLeague { get; set; }         // league used for official trade searches; empty = ask
+
+        public string GetOverlaySelectorHotkeyDisplayString()
+        {
+            return HotkeyText(OverlaySelectorHotkeyModifiers, OverlaySelectorHotkeyKey);
+        }
+
+        // Picks the selector key from the user's previous overlay toggle keys (gem, then passive, then quest).
+        // True only in the session that converted the old per-overlay keys; never saved.
+        [ScriptIgnore]
+        public bool OverlaySelectorJustMigrated { get; set; }
+
+        public void MigrateOverlaySelector()
+        {
+            if (OverlaySelectorMigrated) return;
+            OverlaySelectorMigrated = true;
+            OverlaySelectorJustMigrated = true;
+            if (OverlaySelectorHotkeyKey != 0) return;
+            var legacy = new[]
+            {
+                new[] { GemOverlayHotkeyModifiers, GemOverlayHotkeyKey },
+                new[] { PassiveOverlayHotkeyModifiers, PassiveOverlayHotkeyKey },
+                new[] { QuestOverlayHotkeyModifiers, QuestOverlayHotkeyKey }
+            };
+            foreach (var pair in legacy)
+            {
+                if (pair[1] == 0 || pair[0] == 0) continue;
+                if (UsedByOtherHotkey(pair[0], pair[1])) continue;
+                OverlaySelectorHotkeyModifiers = pair[0];
+                OverlaySelectorHotkeyKey = pair[1];
+                return;
+            }
+            bool allDisabled = GemOverlayHotkeyKey == 0 && PassiveOverlayHotkeyKey == 0 && QuestOverlayHotkeyKey == 0;
+            if (allDisabled) return; // the user turned every overlay key off; keep the selector off too
+            foreach (var key in new[] { Keys.G, Keys.O })
+                if (!UsedByOtherHotkey(2, (int)key))
+                {
+                    OverlaySelectorHotkeyModifiers = 2;
+                    OverlaySelectorHotkeyKey = (int)key;
+                    return;
+                }
+        }
+
+        // Compare and detection-spot keys stay separate global hotkeys.
+        public bool UsedByOtherHotkey(int modifiers, int key)
+        {
+            if (key == 0) return false;
+            return (key == HotkeyKey && modifiers == HotkeyModifiers) ||
+                (key == GemDetectHotkeyKey && modifiers == GemDetectHotkeyModifiers) ||
+                (key == TreeDetectHotkeyKey && modifiers == TreeDetectHotkeyModifiers);
+        }
 
         public string GetPassiveOverlayHotkeyDisplayString()
         {
@@ -63,6 +132,11 @@ namespace Poe2ItemCompanion
         public string GetGemOverlayHotkeyDisplayString()
         {
             return HotkeyText(GemOverlayHotkeyModifiers, GemOverlayHotkeyKey);
+        }
+
+        public string GetQuestOverlayHotkeyDisplayString()
+        {
+            return HotkeyText(QuestOverlayHotkeyModifiers, QuestOverlayHotkeyKey);
         }
 
         public static string HotkeyText(int modifiers, int key)
@@ -107,6 +181,13 @@ namespace Poe2ItemCompanion
             GemOverlayHotkeyModifiers = 2;
             GemOverlayHotkeyKey = (int)Keys.G;
             GemOverlayX = GemOverlayY = -1;
+            QuestOverlayX = QuestOverlayY = -1;
+            QuestOverlayWidth = 680;
+            QuestOverlayHeight = 600;
+            QuestOverlayFollowStory = true;
+            QuestOverlayHotkeyModifiers = 2;
+            QuestOverlayHotkeyKey = (int)Keys.Q;
+            ExcludedQuestIds = new List<string>();
             GemAutoShow = true;
             GemDetectSpots = new List<string>();
             GemDetectThreshold = 14;
@@ -119,6 +200,7 @@ namespace Poe2ItemCompanion
             TreeDetectSpots = new List<string>();
             TreeDetectHotkeyModifiers = 6;
             TreeDetectHotkeyKey = (int)Keys.P;
+            EquipmentOverlayX = EquipmentOverlayY = -1;
         }
 
         public static string GetConfigFilePath()
@@ -241,6 +323,7 @@ namespace Poe2ItemCompanion
             if (!Enum.IsDefined(typeof(GameId), Game)) throw new InvalidDataException("Unknown selected game.");
             if (GemDetectSpots == null) GemDetectSpots = new List<string>();
             if (TreeDetectSpots == null) TreeDetectSpots = new List<string>();
+            if (ExcludedQuestIds == null) ExcludedQuestIds = new List<string>();
             if (GemDetectThreshold <= 0 || GemDetectThreshold > 100) GemDetectThreshold = 14;
             if (StageMidLevel < 1 || StageMidLevel > 100) StageMidLevel = 80;
             if (StageLateLevel <= StageMidLevel || StageLateLevel > 101) StageLateLevel = Math.Min(101, Math.Max(StageMidLevel + 1, 90));
@@ -273,6 +356,8 @@ namespace Poe2ItemCompanion
                 HotkeyKey = (int)Keys.D;
                 HotkeyModifiers = 2; // Ctrl+D
             }
+            MigrateOverlaySelector();
+            if (TradeLeague != null) TradeLeague = TradeLeague.Trim();
         }
 
         public static string FindLatestBuild(string pobDir, string configuredDirectory = null)

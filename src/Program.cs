@@ -68,10 +68,13 @@ namespace Poe2ItemCompanion
                     }
                 }
                 if (firstArg == "--test-ui") return UiTests.Run(args.Length > 1 ? Path.GetFullPath(args[1]) : null);
+                if (firstArg == "--test-pob-bridge-fixtures") return PobBridgeTests.Run(fixturesOnly: true);
                 if (firstArg == "--test-pob-bridge") return PobBridgeTests.Run(
                     args.Length > 1 ? Path.GetFullPath(args[1]) : null, args.Length > 2 ? Path.GetFullPath(args[2]) : null);
                 if (firstArg == "--test-dual-game") return DualGameTests.Run();
                 if (firstArg == "--test-gem-acquisition") return DualGameTests.RunAcquisition();
+                if (firstArg == "--test-quest-planner") return QuestPlannerTests.Run();
+                if (firstArg == "--test-equipment-trade") return EquipmentTradeTests.Run(args.Length > 1 ? Path.GetFullPath(args[1]) : null);
                 if (firstArg == "--test-sources")
                 {
                     return RunSourceTests();
@@ -145,10 +148,12 @@ namespace Poe2ItemCompanion
             Console.WriteLine("  Poe2ItemCompanion.exe --test-dual-game");
             Console.WriteLine("                                     Verify both installed engines and isolated dual-game fixtures");
             Console.WriteLine("  Poe2ItemCompanion.exe --test-gem-acquisition");
+            Console.WriteLine("  Poe2ItemCompanion.exe --test-quest-planner");
             Console.WriteLine("  Poe2ItemCompanion.exe --test-ui [screenshot-directory]");
             Console.WriteLine("                                     Verify isolated UI themes/layouts without loading user builds");
             Console.WriteLine("                                     Verify PoE1 gem purchase guidance and required levels");
             Console.WriteLine("  Poe2ItemCompanion.exe --test-pob-bridge [poe1-current.xml] [poe2-current.xml]");
+            Console.WriteLine("  Poe2ItemCompanion.exe --test-pob-bridge-fixtures");
             Console.WriteLine("                                     Verify local bridge and native imports with throwaway builds");
             Console.WriteLine("  Poe2ItemCompanion.exe --probe-pob-bridge --game poe1|poe2 [installation-path]");
             Console.WriteLine("                                     Read-only authenticated handshake; never sends IMPORT");
@@ -936,14 +941,16 @@ Item Level: 82
             if (!gems.Any(x => x.Kind == "Skill" && x.Tier > 0) || gems.Any(x => x.Kind == "Support" && !x.Tier.HasValue))
             { Console.WriteLine("FAILED: PoB2 gem tier/kind not exported"); return false; }
             var plan = GemCutting.Plan(guide, current);
-            if (plan.Count == 0 || plan.Select(p => p.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() != plan.Count)
-            { Console.WriteLine("FAILED: gem plan empty or duplicated"); return false; }
+            if (plan.Count == 0 || plan.Count != guide.Skills.Sum(s => s.Gems.Count))
+            { Console.WriteLine("FAILED: gem plan lost guide instances"); return false; }
             Console.WriteLine("    Guide stage " + (guide.ActiveLoadout ?? "saved sets") + ": " + plan.Count + " gems, " + plan.Count(p => p.NeedsCut) + " missing on Current character");
             foreach (var p in plan.Take(6))
                 Console.WriteLine("      " + p.Name + " [" + p.Kind + " tier " + GemCutting.Roman(p.Tier) + ", tab: " + p.CutterTab + "] " + p.Status);
             var one = plan.First(p => p.Tier > 0);
-            var fake = new BuildDetails { Success = true };
-            fake.Skills.Add(new SkillGroup { Gems = new System.Collections.Generic.List<SkillGem> { new SkillGem { Name = one.Name, Level = 99, Enabled = true } } });
+            var originalGem = guide.Skills.SelectMany(s => s.Gems).First(gem => gem.Name == one.Name);
+            var fake = new BuildDetails { Success = true, Game = guide.Game };
+            fake.Skills.Add(new SkillGroup { Enabled = true, Gems = new System.Collections.Generic.List<SkillGem> {
+                new SkillGem { Name = one.Name, Id = originalGem.Id, Variant = originalGem.Variant, Kind = one.Kind, Level = 99, Enabled = true } } });
             var withFake = GemCutting.Plan(guide, fake).First(p => p.Name == one.Name);
             var noCurrent = GemCutting.Plan(guide, null).First(p => p.Name == one.Name);
             if (withFake.NeedsCut || !withFake.Status.StartsWith("Have") || noCurrent.Status != "Current character not loaded")
@@ -960,7 +967,7 @@ Item Level: 82
                 var view = (GuideBuildView)typeof(MainWindow).GetField("_guideBuildView", flags).GetValue(window);
                 var list = Descendants(view).OfType<ListView>().FirstOrDefault();
                 var log = Descendants(view).OfType<Label>().FirstOrDefault(l => l.Text.StartsWith("Game log:"));
-                if (list == null || list.Items.Count != plan.Count || log == null)
+                if (list == null || list.Items.Count != plan.Count(p => p.NeedsCut) || log == null)
                 { Console.WriteLine("FAILED: Gem cutting tab / game log row missing"); return false; }
                 Console.WriteLine("    UI: " + log.Text);
                 window.Hide();
@@ -1197,13 +1204,13 @@ Item Level: 82
             var c2 = g.Clone(); c2.TreeDetectSpots = new System.Collections.Generic.List<string> { "0|0|10|10|missing-file.png" }; c2.PassiveAutoShow = false;
             using (var feature = new OverlayFeature { Title = "Passive overlay", SpotPrefix = "tree-", Create = c => new PassiveOverlay(c), Spots = c => c.TreeDetectSpots,
                 GetAutoShow = c => c.PassiveAutoShow, SetAutoShow = (c, v) => c.PassiveAutoShow = v,
-                ToggleModifiers = c => 7, ToggleKey = c => (int)Keys.F9, MarkModifiers = c => 7, MarkKey = c => (int)Keys.F9 })
+                MarkModifiers = c => 7, MarkKey = c => (int)Keys.F9 })
             {
-                feature.Start(c1, 9004, 9005, null, () => { });
+                feature.Start(c1, 9005, null, () => { });
                 if (!feature.AutoShow) { Console.WriteLine("FAILED: feature auto-show"); return false; }
                 feature.SetConfig(c2);
                 if (feature.AutoShow) { Console.WriteLine("FAILED: feature not rebound to new config"); return false; }
-                var taken = new System.Collections.Generic.HashSet<int>();
+                var taken = new System.Collections.Generic.HashSet<int> { (7 << 16) | (int)Keys.F9 };
                 feature.RegisterHotkeys(taken);
                 if (taken.Count != 1) { Console.WriteLine("FAILED: duplicate overlay hotkey should be skipped"); return false; }
             }

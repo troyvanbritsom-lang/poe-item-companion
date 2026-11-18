@@ -72,11 +72,13 @@ end
     $profile = Get-Content -LiteralPath $config -Raw | ConvertFrom-Json
     Assert ($profile.Profiles.Poe1.PobPath -eq $pob1 -and $profile.Profiles.Poe2.PobPath -eq $pob2) 'Selected paths were not saved to the correct profiles.'
     Assert ((Select-String -LiteralPath $script:setupLog -Pattern 'PoB for PoE[12]: bridge installed\.').Count -eq 2) 'Setup did not confirm both bridges.'
-    $expected = @('data\ggg_passive_ids.tsv','data\poe1_gem_acquisition.json','data\poenavi-LICENSE.txt',
+    $expected = @('data\campaign_quests.json','data\ggg_passive_ids.tsv','data\poe1_gem_acquisition.json','data\poenavi-LICENSE.txt',
         'installed.mode','NOTICE.md','Poe2ItemCompanion.exe','README.md','scripts\install-pob-bridge.ps1',
-        'scripts\pob_import_bridge.lua','scripts\pob_wrapper.lua','unins000.dat','unins000.exe')
+        'scripts\pob_import_bridge.lua','scripts\pob_wrapper.lua','unins000.dat','unins000.exe','USER-GUIDE.txt')
     $actual = @(Get-ChildItem -LiteralPath $app -File -Recurse | ForEach-Object { $_.FullName.Substring($app.Length + 1) })
     Assert (-not (Compare-Object $expected $actual)) 'Installed package contents do not match the reviewed allowlist.'
+    $guide = Join-Path $app 'USER-GUIDE.txt'
+    Assert ((Get-FileHash -LiteralPath $guide).Hash -eq (Get-FileHash -LiteralPath (Join-Path $root 'USER-GUIDE.txt')).Hash) 'Installed User Guide differs from the reviewed file.'
     $exe = Get-Item -LiteralPath (Join-Path $app 'Poe2ItemCompanion.exe')
     Assert ($exe.VersionInfo.ProductVersion -eq $version) 'Installed executable version differs from VERSION.'
     $setupVersion = (Get-Item -LiteralPath $Setup).VersionInfo

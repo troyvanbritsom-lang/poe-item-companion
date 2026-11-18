@@ -22,6 +22,7 @@ copy /Y "scripts\pob_wrapper.lua" "bin\scripts\pob_wrapper.lua" >nul || exit /b 
 if not exist "bin\data" mkdir "bin\data"
 copy /Y "data\ggg_passive_ids.tsv" "bin\data\ggg_passive_ids.tsv" >nul || exit /b 1
 copy /Y "data\poe1_gem_acquisition.json" "bin\data\poe1_gem_acquisition.json" >nul || exit /b 1
+copy /Y "data\campaign_quests.json" "bin\data\campaign_quests.json" >nul || exit /b 1
 copy /Y "data\poenavi-LICENSE.txt" "bin\data\poenavi-LICENSE.txt" >nul || exit /b 1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "scripts\compile-version.ps1" || exit /b 1
 

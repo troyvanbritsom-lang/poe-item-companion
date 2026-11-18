@@ -140,7 +140,7 @@ namespace Poe2ItemCompanion
             }
 
             SetFooter("Gold = node the path leads to. Order: shortest path from your tree; the guide has no levelling order." + Environment.NewLine +
-                (_error ?? "Hotkey " + _config.GetPassiveOverlayHotkeyDisplayString() + " toggles; based on your Current character file - re-import it in the matching PoB after levelling."));
+                (_error ?? "Selector " + EquipmentOverlay.SelectorKeyText(_config) + " shows/hides; based on your Current character file - re-import it in the matching PoB after levelling."));
         }
     }
 }

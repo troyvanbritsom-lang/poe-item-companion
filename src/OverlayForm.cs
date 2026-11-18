@@ -20,10 +20,12 @@ namespace Poe2ItemCompanion
             public bool Header;
             public bool Wrap;
             public string ToolTipText;
+            public GemCutEntry Gem;
         }
 
         private class LinesPanel : Panel
         {
+            public GemIconCache Icons;
             public readonly List<Line> Lines = new List<Line>();
             private readonly Font _font = new Font("Consolas", 9.5f);
             private readonly Font _headerFont = new Font("Segoe UI", 9.5f, FontStyle.Bold);
@@ -34,7 +36,8 @@ namespace Poe2ItemCompanion
 
             public int RowHeight(Line l)
             {
-                return l.Wrap ? TextRenderer.MeasureText(l.Text, l.Header ? _headerFont : _font, new Size(Math.Max(40, ClientSize.Width - 26), int.MaxValue),
+                return l.Gem != null ? Math.Max(46, TextRenderer.MeasureText(l.Text, _font, new Size(Math.Max(40, ClientSize.Width - 72), int.MaxValue),
+                    TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix).Height + 8) : l.Wrap ? TextRenderer.MeasureText(l.Text, l.Header ? _headerFont : _font, new Size(Math.Max(40, ClientSize.Width - 26), int.MaxValue),
                     TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix).Height + 6 : TextRenderer.MeasureText("Ag", l.Header ? _headerFont : _font).Height + (l.Header ? 12 : 4);
             }
 
@@ -105,15 +108,22 @@ namespace Poe2ItemCompanion
                     if (l.Header && y > 2)
                         using (var pen = new Pen(UiTheme.Border))
                             e.Graphics.DrawLine(pen, 6, y + 2, ClientSize.Width - 20, y + 2);
-                    TextRenderer.DrawText(e.Graphics, l.Text, l.Header ? _headerFont : _font, new Rectangle(6, y + (l.Header ? 7 : 2), Math.Max(40, ClientSize.Width - 26), RowHeight(l)), l.Color,
-                        TextFormatFlags.Left | TextFormatFlags.NoPrefix | (l.Wrap ? TextFormatFlags.WordBreak : TextFormatFlags.EndEllipsis));
+                    int x = 6;
+                    if (l.Gem != null)
+                    {
+                        GemVisual.Draw(e.Graphics, new Rectangle(x, y + 3, 38, 38), l.Gem.Color, l.Gem.Kind,
+                            Icons == null ? null : Icons.Get(l.Gem.Name, l.Gem.Kind));
+                        x += 46;
+                    }
+                    TextRenderer.DrawText(e.Graphics, l.Text, l.Header ? _headerFont : _font, new Rectangle(x, y + (l.Header ? 7 : 0), Math.Max(40, ClientSize.Width - x - 20), RowHeight(l)), l.Color,
+                        TextFormatFlags.Left | TextFormatFlags.NoPrefix | (l.Gem != null ? TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak : l.Wrap ? TextFormatFlags.WordBreak : TextFormatFlags.EndEllipsis));
                     y += RowHeight(l);
                 }
             }
 
             protected override void Dispose(bool disposing)
             {
-                if (disposing) { _toolTip.Dispose(); _font.Dispose(); _headerFont.Dispose(); }
+                if (disposing) { _toolTip.Dispose(); _font.Dispose(); _headerFont.Dispose(); if (Icons != null) Icons.Dispose(); }
                 base.Dispose(disposing);
             }
         }
@@ -122,6 +132,9 @@ namespace Poe2ItemCompanion
         private readonly Label _title;
         private readonly LinesPanel _body;
         private readonly Label _footer;
+        private readonly Label _toggle;
+        private Control _customBody;
+        private Func<int> _customHeight;
         private string _cacheKey;
         private bool _loaded;
         private Point _dragStart;
@@ -151,7 +164,7 @@ namespace Poe2ItemCompanion
             _footer = new Label { Dock = DockStyle.Bottom, Height = 36, ForeColor = UiTheme.Muted, Font = new Font("Segoe UI", 8.5f) };
             var close = new Label { Text = "x", Dock = DockStyle.Right, Width = 24, ForeColor = UiTheme.Text, Cursor = Cursors.Hand, TextAlign = ContentAlignment.TopCenter, AccessibleName = "Hide overlay" };
             close.Click += (s, e) => { AutoShown = false; Hide(); };
-            var toggle = new Label { Text = "all", Dock = DockStyle.Right, Width = 32, ForeColor = UiTheme.Muted, Cursor = Cursors.Hand, TextAlign = ContentAlignment.TopCenter, AccessibleName = "Toggle all entries" };
+            var toggle = _toggle = new Label { Text = "all", Dock = DockStyle.Right, Width = 32, ForeColor = UiTheme.Muted, Cursor = Cursors.Hand, TextAlign = ContentAlignment.TopCenter, AccessibleName = "Toggle all entries" };
             toggle.Click += (s, e) => { ShowAll = !ShowAll; _config.Save(); Render(); };
             header.Controls.Add(_title);
             header.Controls.Add(toggle);
@@ -204,7 +217,33 @@ namespace Poe2ItemCompanion
             _body.Lines.Add(new Line { Text = text, Color = color, Header = header, ToolTipText = toolTipText });
         }
         protected void AddWrappedLine(string text, Color color) { _body.Lines.Add(new Line { Text = text, Color = color, Wrap = true }); }
+        protected void AddGemLine(string text, Color color, GemCutEntry gem, string toolTipText)
+        {
+            _body.Lines.Add(new Line { Text = text, Color = color, Gem = gem, ToolTipText = toolTipText });
+        }
         protected int LineCount { get { return _body.Lines.Count; } }
+
+        // Replaces the text lines with an owner-drawn control (e.g. the equipment slot grid).
+        protected void UseCustomBody(Control body, Func<int> contentHeight)
+        {
+            _customBody = body;
+            _customHeight = contentHeight;
+            body.Dock = DockStyle.Fill;
+            _body.Visible = false;
+            _body.Parent.Controls.Add(body);
+            body.BringToFront();
+            body.MouseDown += (s, e) => { if (e.Button == MouseButtons.Left) _dragStart = e.Location; };
+            body.MouseMove += (s, e) => { if (e.Button == MouseButtons.Left) Location = new Point(Location.X + e.X - _dragStart.X, Location.Y + e.Y - _dragStart.Y); };
+            body.MouseUp += (s, e) => { if (e.Button == MouseButtons.Left) SavedPosition = Location; };
+        }
+
+        protected void SetToggleText(string text, string accessibleName)
+        {
+            _toggle.Text = text;
+            _toggle.Width = Math.Max(32, TextRenderer.MeasureText(text, _toggle.Font).Width + 8);
+            _toggle.AccessibleName = accessibleName;
+        }
+        protected void ConfigureGemIcons() { _body.Icons = new GemIconCache(_config); }
 
         public void Toggle()
         {
@@ -246,6 +285,9 @@ namespace Poe2ItemCompanion
 
         public void RefreshContent() { if (_loaded) Render(); }
 
+        // Tests: show already-loaded data through the normal render/sizing path without reading a guide.
+        internal void RenderLoadedForTest() { _loaded = true; _cacheKey = BuildKey(); Render(); }
+
         private void Render()
         {
             _body.ClearHover();
@@ -253,9 +295,11 @@ namespace Poe2ItemCompanion
             RenderContent();
             _footer.Height = Math.Max(30, TextRenderer.MeasureText(_footer.Text, _footer.Font,
                 new Size(Math.Max(40, Width - 20), int.MaxValue), TextFormatFlags.WordBreak).Height + 4);
-            int h = _title.Parent.Height + _body.ContentHeight + _footer.Height + _body.Parent.Padding.Vertical + Padding.Vertical;
+            int content = _customBody != null ? _customHeight() : _body.ContentHeight;
+            int h = _title.Parent.Height + content + _footer.Height + _body.Parent.Padding.Vertical + Padding.Vertical;
             var area = Screen.FromPoint(Location).WorkingArea;
             Height = Math.Min(h, area.Height - 20);
+            if (_customBody != null) { _customBody.Invalidate(); return; }
             _body.AutoScrollMinSize = new Size(0, _body.ContentHeight);
             _body.Invalidate();
         }

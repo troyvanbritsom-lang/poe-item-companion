@@ -1,0 +1,95 @@
+PATH OF EXILE COMPANION - USER GUIDE
+===================================
+
+1. Get Path of Building Community
+---------------------------------
+
+Download and install the edition that matches the game you play:
+
+  Path of Exile 1 (PoB1):
+  https://github.com/PathOfBuildingCommunity/PathOfBuilding/releases/latest
+
+  Path of Exile 2 (PoB2):
+  https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/releases/latest
+
+If you play both games, install them in separate folders. The companion
+does not bundle Path of Building, game artwork, or your character files.
+
+2. Install the companion
+------------------------
+
+Get the Windows x64 Setup file from the companion's official release page:
+https://github.com/troyvanbritsom-lang/poe-item-companion/releases
+
+Save and close PoB first. Run Setup, pick where you want the companion
+installed, and use the optional PoB page to browse to each matching PoB
+installation folder (the folder containing Modules, not your Builds folder).
+You can select either game, both games, or leave both fields blank. Skipping
+the bridge is fine: you can still set the PoB path later in the companion's
+game-specific Settings and load a character manually. Restart PoB after
+Setup reports that the bridge has been installed for that game.
+
+3. Set up Current and Guide
+---------------------------
+
+Open Path of Exile Companion from the Start menu and choose your game from
+Companion game at the top of the dashboard.
+
+  Current is what you wear now. In PoB, use Import/Export Build to import
+  your character and save the build as an XML file. In the companion, use
+  the Current character file control to pick it, or click Use my character
+  and confirm the suggested file. You can also use Import Current character
+  code... if you generated a code from your character in PoB.
+
+  Guide is the build you want to follow. Paste its code or supported link
+  into GUIDE code / link and click Load GUIDE code. You can also use
+  Guide file... for a local guide. The Build tab shows your guide; it does
+  not replace your Current character. A guide is optional for comparisons.
+  Keep the Current and Guide XML files separate if you use the bridge.
+
+4. Compare an item and open overlays
+------------------------------------
+
+Hover an item in the matching game and press Ctrl+D. The comparison uses
+your last saved Current character, not your Guide or live gear. To compare
+copied item text manually, use Compare > Compare from clipboard. Item
+comparison does not equip or save anything.
+
+Press Ctrl+G to open the overlay selector. Click an entry or press its
+number: 1 Gems, 2 Passives, 3 Quests, 4 Recommended equipment, or
+5 Update character. Press Esc to close the selector. You can change the
+key under Settings > Keyboard shortcuts > Overlay selector. Windowed or
+borderless game mode works best for in-game overlays.
+
+If your Guide has loadouts, pick one with Stage (PoB loadout) in the Build
+tab or from the selector. The stage is shared by Build and the guide-based
+overlays; it never changes Current. In Build, Use suggested stage applies
+the current game-log suggestion when available. Follow game applies later
+suggestions automatically. Picking a stage manually pauses following;
+re-enable Follow game in Build to resume it.
+
+5. Refresh your character or check for updates
+-----------------------------------------------
+
+Without the bridge, re-import your character in PoB and save the same
+Current XML after changing gear, or import a fresh Current code.
+
+With the bridge, open the matching PoB and the same saved Current XML.
+In PoB, sign in and select the intended character on the Import/Export
+tab. Then click Import via PoB in the companion or choose Update character
+from the overlay selector. The bridge does not sign in or choose the
+character for you. If an import fails, check PoB before retrying.
+
+A PoB update can remove the bridge hook. Save and close PoB, rerun the
+companion installer, select only the affected PoB folder, and restart PoB
+after a successful result. If Setup cannot write to a protected folder,
+use a writable PoB installation under your own Windows account or leave
+the bridge disabled. If Setup says the PoB version is unsupported, do not
+force the patch; load Current manually instead.
+
+The companion checks GitHub for stable releases in the background when it
+starts. For a manual check, right-click the companion's system tray icon
+and select Check for updates.... If a newer version is available, you can
+open the release page yourself. Nothing downloads or runs automatically.
+Exit the companion before installing an update. Leave the PoB fields blank
+unless you want to reapply a bridge.
