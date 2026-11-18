@@ -56,7 +56,7 @@ namespace Poe2ItemCompanion
 
         public static string GetFolder()
         {
-            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "gemdetect");
+            return Path.Combine(CompanionStorage.DataDirectory, "gemdetect");
         }
 
         public int SpotCount { get { EnsureLoaded(); return _spots.Count; } }

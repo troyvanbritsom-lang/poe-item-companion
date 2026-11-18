@@ -119,8 +119,16 @@ namespace Poe2ItemCompanion
                 File.Copy(Path.Combine(GameIdentity.DefaultPobPath(game == 0 ? GameId.Poe1 : GameId.Poe2),
                     "Modules", "Common.lua"), Path.Combine(modules, "Common.lua"));
                 File.WriteAllText(Path.Combine(paths[game], "lua", "sha2.lua"), "");
-                File.WriteAllText(Path.Combine(modules, "CompanionBridge.key"), new string('a', 64) + "\n");
-                keyAcls[paths[game]] = File.GetAccessControl(Path.Combine(modules, "CompanionBridge.key"))
+                string keyPath = Path.Combine(modules, "CompanionBridge.key");
+                File.WriteAllText(keyPath, new string('a', 64) + "\n");
+                var acl = new System.Security.AccessControl.FileSecurity();
+                acl.SetAccessRuleProtection(true, false);
+                acl.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(
+                    System.Security.Principal.WindowsIdentity.GetCurrent().User,
+                    System.Security.AccessControl.FileSystemRights.FullControl,
+                    System.Security.AccessControl.AccessControlType.Allow));
+                File.SetAccessControl(keyPath, acl);
+                keyAcls[paths[game]] = File.GetAccessControl(keyPath)
                     .GetSecurityDescriptorSddlForm(System.Security.AccessControl.AccessControlSections.All);
             }
             string arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + Path.Combine(root, "scripts", "install-pob-bridge.ps1")

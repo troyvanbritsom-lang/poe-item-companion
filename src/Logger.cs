@@ -15,7 +15,7 @@ namespace Poe2ItemCompanion
             {
                 if (_logFilePath == null)
                 {
-                    string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+                    string baseDir = CompanionStorage.DataDirectory;
                     string logDir = Path.Combine(baseDir, "logs");
                     try
                     {

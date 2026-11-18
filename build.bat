@@ -18,14 +18,15 @@ if not exist "bin" mkdir "bin"
 if not exist "bin\scripts" mkdir "bin\scripts"
 
 echo Copying Lua scripts to bin\scripts...
-copy /Y "scripts\pob_wrapper.lua" "bin\scripts\pob_wrapper.lua" >nul
+copy /Y "scripts\pob_wrapper.lua" "bin\scripts\pob_wrapper.lua" >nul || exit /b 1
 if not exist "bin\data" mkdir "bin\data"
-copy /Y "data\ggg_passive_ids.tsv" "bin\data\ggg_passive_ids.tsv" >nul
-copy /Y "data\poe1_gem_acquisition.json" "bin\data\poe1_gem_acquisition.json" >nul
-copy /Y "data\poenavi-LICENSE.txt" "bin\data\poenavi-LICENSE.txt" >nul
+copy /Y "data\ggg_passive_ids.tsv" "bin\data\ggg_passive_ids.tsv" >nul || exit /b 1
+copy /Y "data\poe1_gem_acquisition.json" "bin\data\poe1_gem_acquisition.json" >nul || exit /b 1
+copy /Y "data\poenavi-LICENSE.txt" "bin\data\poenavi-LICENSE.txt" >nul || exit /b 1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "scripts\compile-version.ps1" || exit /b 1
 
 echo Compiling C# source files...
-"%CSC%" /nologo /target:winexe /platform:x64 /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Web.Extensions.dll /out:"bin\Poe2ItemCompanion.exe" src\*.cs
+"%CSC%" /nologo /target:winexe /platform:x64 /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Web.Extensions.dll /r:System.Net.Http.dll /out:"bin\Poe2ItemCompanion.exe" src\*.cs "bin\BuildVersion.cs"
 
 if %ERRORLEVEL% equ 0 (
     echo.

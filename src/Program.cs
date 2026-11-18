@@ -43,6 +43,13 @@ namespace Poe2ItemCompanion
             if (args != null && args.Length > 0)
             {
                 string firstArg = args[0].ToLowerInvariant();
+                if (firstArg == "--test-updates") return ReleaseUpdates.Test();
+                if (firstArg == "--setup-pob-profile")
+                {
+                    if (!_requestedGame.HasValue || args.Length != 2) return 1;
+                    try { AppConfig.SaveInstalledPobPath(_requestedGame.Value, args[1]); return 0; }
+                    catch (Exception ex) { Logger.Error("Setup could not save the selected PoB path.", ex); return 1; }
+                }
                 if (firstArg == "--probe-pob-bridge")
                 {
                     if (!_requestedGame.HasValue)
@@ -99,16 +106,25 @@ namespace Poe2ItemCompanion
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
-            AppConfig config;
-            try { config = LoadConfig(); }
-            catch (Exception ex)
+            bool first;
+            using (var running = new System.Threading.Mutex(true,
+                CompanionStorage.Installed ? CompanionStorage.InstalledMutex : null, out first))
             {
-                MessageBox.Show("The companion could not load its configuration:\n" + ex.Message + "\n\nThe original configuration was preserved. Correct or restore config.json before restarting.", "Configuration error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return 1;
+                if (!first)
+                {
+                    MessageBox.Show("The installed companion is already running. Look for its icon in the system tray.");
+                    return 1;
+                }
+                AppConfig config;
+                try { config = LoadConfig(); }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("The companion could not load its configuration:\n" + ex.Message + "\n\nThe original configuration was preserved. Correct or restore config.json before restarting.", "Configuration error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return 1;
+                }
+                using (var context = new TrayApplicationContext(config)) Application.Run(context);
+                Logger.Info("Path of Exile Companion shutting down cleanly.");
             }
-            var context = new TrayApplicationContext(config);
-            Application.Run(context);
-            Logger.Info("Path of Exile Companion shutting down cleanly.");
             return 0;
         }
 

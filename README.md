@@ -4,6 +4,16 @@ A lightweight Windows companion for **Path of Exile 1 and Path of Exile 2**, usi
 
 Choose **Companion game** at the top of the dashboard or in the tray menu. Hover over an item in that game and press **Ctrl+D**: the companion copies it, calculates changes against your **Current character snapshot**, and displays them near your cursor. Your separate **Guide build** defines goals, never the equipped baseline.
 
+## Install on Windows
+
+Download `PoE-Item-Companion-Setup-v<version>-x64.exe` from the [official GitHub releases](https://github.com/troyvanbritsom-lang/poe-item-companion/releases). Setup installs for the current Windows user, lets you choose the destination on first install, and adds a Start menu shortcut with an optional desktop shortcut. The installer is unsigned. It does not bundle Path of Building.
+
+Save and close any PoB you want to connect before running Setup. On **Path of Building bridges (optional)**, browse to the installation root for each game you use, or leave either field blank to skip it. Setup checks the game and supported patch points, then shows a separate result for each bridge. If PoB is in a protected folder that Setup cannot write to, use a writable PoB installation under the same Windows account or leave the bridge disabled; the companion can still calculate with a compatible PoB configured in Settings. Restart PoB yourself after a successful bridge setup.
+
+The app checks for stable releases in the background on startup. Right-click its tray icon and choose **Check for updates** to check again or see your version. If a newer release is available, the app offers to open GitHub in your browser. It never downloads or runs the update. Exit the companion before running a newer installer. Leave the PoB fields blank on upgrades to keep the current profile paths and avoid reapplying bridges.
+
+Installed settings, logs, exports and captures are kept in `%LOCALAPPDATA%\PoeItemCompanion\UserData`. Portable builds still use their own folder. The installer does not migrate or delete portable data; you can point the new copy at the same build files in Settings. Windows **Installed apps** removes the installed companion and shortcuts but leaves user data and PoB builds. It also leaves installed PoB hooks intact; see the bridge removal instructions below.
+
 ## Game support and profiles
 
 | Feature | PoE1 | PoE2 |
@@ -43,17 +53,17 @@ Focused verification: `bin\Poe2ItemCompanion.exe --test-gem-acquisition`.
 
 **Import via PoB** in the companion main window asks the selected game's PoB to import its already-selected, authenticated character: passive tree/jewels first, then equipment/skills. It preserves PoB's delete-jewels, delete-equipment, delete-skills and ignore-weapon-swap checkboxes. After both imports succeed, PoB saves the open build **only if its existing filename matches CURRENT**, then the companion reloads Current. Guide is unchanged. The button and source/profile-changing controls are disabled while busy.
 
-Install the opt-in hook with PoB closed (save your work first), from this checkout:
+Use the optional PoB step in the Windows installer, or install the opt-in hook manually with PoB closed:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-pob-bridge.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-pob-bridge.ps1 -Poe1Path 'C:\Games\Path of Building Community'
 ```
 
-Use `-Poe1Path` and `-Poe2Path` for non-default installations; set the same paths in the companion's game-specific Settings. Restart each PoB after installing. In its Import/Export tab, authenticate and select the intended character once. Open your saved character build in PoB and choose **that same XML file** as the companion's Current source. Afterwards, **Import via PoB** performs the sequence without coordinate automation or tree-overwrite dialogs. The explicit button authorizes replacement using the existing import checkboxes; it does not authenticate, choose a character, open another build, or accept Save As dialogs for you.
+Pass `-Poe1Path`, `-Poe2Path`, or both. Add `-ValidateOnly` to check compatibility without applying the bridge. If you use the script directly, set the same paths in the companion's game-specific Settings. Restart each PoB after installing. In its Import/Export tab, authenticate and select the intended character once. Open your saved character build in PoB and choose **that same XML file** as the companion's Current source. Afterwards, **Import via PoB** performs the sequence without coordinate automation or tree-overwrite dialogs. The explicit button authorizes replacement using the existing import checkboxes; it does not authenticate, choose a character, open another build, or accept Save As dialogs for you.
 
 Run `bin\Poe2ItemCompanion.exe` from the **bridge checkout**, not an older companion in another checkout. The bridge window title ends in **PoB import bridge**, and its tray tooltip ends in **PoB bridge**, in both games and after switching. Switching games recreates the dashboard within the same executable; it does not launch a different companion. If the import button is missing, check the window title and executable path in Task Manager: another companion instance can have the same game selected but no bridge. Renaming a Git branch does not rename its worktree directory.
 
-The installer checks known source anchors and backs up every preexisting source before writing. In **each** of `D:\Path of Building Community` and `D:\Path of Building Community (PoE2)`, it changes `Modules\Main.lua` (update-thread hook) and `Modules\Build.lua` (check write/close failures), adds `Modules\CompanionBridge.lua`, and creates `Modules\CompanionBridge.key`. The random credential file has an ACL restricted to the installing Windows user, SYSTEM and Administrators; run companion and PoB as that user. Never share or commit the key. Backups stay beside their originals as `.companion-backup-<timestamp>`; repeat installs also back up an existing bridge module. No builds, character files or companion configuration are installed or changed.
+The installer checks known source anchors and backs up every preexisting source before writing. In each selected installation it changes `Modules\Main.lua` (update-thread hook) and `Modules\Build.lua` (check write/close failures), adds a copy of the bundled payload as `Modules\CompanionBridge.lua`, and creates `Modules\CompanionBridge.key`. The random credential file has an ACL restricted to the installing Windows user, SYSTEM and Administrators; run companion and PoB as that user. Never share or commit the key. Backups stay beside their originals as `.companion-backup-<timestamp>-<id>`; repeat installs also back up an existing bridge module. Setup saves the selected paths in the companion, not in PoB. Neither Setup nor the manual bridge script edits builds or character files.
 
 The dedicated IPv4 listeners bind **127.0.0.1 only**, on **49171 for PoE1** and **49172 for PoE2**. PoB's OAuth receiver/ports are untouched. A fresh Windows-cryptographic challenge and HMAC-SHA256 authenticate both sides and bind commands/statuses to that connection; the bridge key is never sent, and captured requests cannot be replayed on a new connection. The bounded protocol permits only an authenticated `IMPORT` request with a request nonce and the expected Current filename; filenames cannot select a different save destination, arbitrary commands/Lua are rejected, and responses contain only fixed statuses/error codes. API authentication tokens and character payloads stay inside PoB. This is same-user local IPC, not a security boundary against software already running as that user.
 
@@ -69,7 +79,7 @@ Connection failures identify the phase and socket error code without logging cre
 
 For a safe reachability check, run `bin\Poe2ItemCompanion.exe --probe-pob-bridge --game poe1` (or `poe2`; optionally append the installation path). This command only sends `HELLO` and verifies PoB's authenticated challenge, then disconnects. It never sends `IMPORT`, loads a user build, saves configuration, or starts/restarts PoB. A successful probe establishes handshake reachability only, not character import/save completion.
 
-**Updates/removal:** PoB updates can remove or invalidate the hook; there is no update-survival guarantee. Save/close PoB, rerun the installer from the current checkout, and restart. If an anchor check fails, stop rather than hand-patching unknown code. To remove on the same PoB version, restore the original `Main.lua` and `Build.lua` backups (not backups from a repeat install) and delete only `Modules\CompanionBridge.lua` and `Modules\CompanionBridge.key`. If PoB has updated, restore official files for that version instead of downgrading from old backups. Never remove the module while `Main.lua` still references it.
+**Updates/removal:** PoB updates can remove or invalidate the hook. Nothing silently repatches PoB. Save and close PoB, rerun Setup (or the bridge script), select the affected game, and restart PoB. If an anchor check fails, stop rather than hand-patching unknown code. To remove on the same PoB version, restore the original `Main.lua` and `Build.lua` backups (not backups from a repeat install) and delete only `Modules\CompanionBridge.lua` and `Modules\CompanionBridge.key`. If PoB has updated, restore official files for that version instead of downgrading from old backups. Never remove the module while `Main.lua` still references it.
 
 Focused checks: `bin\Poe2ItemCompanion.exe --test-pob-bridge` exercises both installed native import/save routines against throwaway builds, mock TCP client acknowledgements, authentication/build guards, option preservation, errors and fragmented I/O. It also checks real LuaSocket connection lifecycles, idle/fragmented competing peers, concurrent-import refusal/callback isolation, and actual C#-to-LuaSocket authenticated exchanges against build-less fixtures behind a model of the native background-gate predicate using each installed Common coroutine registry. Background fixtures measure 10 frames against a 900-4000 ms elapsed/under-400 ms CPU budget; they do not launch the real renderer or measure its rendering cost. Installer fixtures check shutdown insertion/reapply, source backups and unchanged credentials. Network test listeners use ephemeral ports, not the live PoB ports. Optional arguments are existing PoE1 and PoE2 XML files to verify read-only Current load/reload. `--test-ui` checks the button/layout/busy state, and `--test-dual-game` covers shared-engine behavior. These are **offline integration tests, not a live authenticated API end-to-end confirmation**; a restarted PoB with the user's selected character and matching Current is required for that final check.
 
@@ -154,6 +164,17 @@ Run `build.bat` in this folder:
 build.bat
 ```
 This compiles the C# source files using Windows `.NET csc.exe` into `bin\Poe2ItemCompanion.exe`.
+
+### Package a Windows release
+
+`VERSION` is the single source for the app version, Setup version and release tag (`v<VERSION>`). Install [Inno Setup 6.7.3 or later](https://jrsoftware.org/isdl.php) and run these commands from the repository root:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\installer\build.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\installer\test.ps1
+```
+
+The smoke test requires a Windows account without an existing installed copy. It uses synthetic PoB folders and an isolated user-data directory. `installer\Companion.iss` explicitly lists distributed files. Only publish the tested `bin\installer\PoE-Item-Companion-Setup-v<version>-x64.exe` from the audited source revision on `main`, as a stable GitHub Release with the matching tag. Do not upload portable build folders, user data or external PoB files.
 
 ### 2. Run Verification Tests
 For isolated dual-game fixtures against both installed engines, including profile migration and repeated live UI switches:

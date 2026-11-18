@@ -93,7 +93,7 @@ namespace Poe2ItemCompanion
 
         public AppConfig()
         {
-            PobPath = @"D:\Path of Building Community (PoE2)";
+            PobPath = GameIdentity.DefaultPobPath(GameId.Poe2);
             BuildFilePath = null;
             AutoDetectLatestBuild = false;
             HotkeyModifiers = 2; // MOD_CONTROL
@@ -123,11 +123,10 @@ namespace Poe2ItemCompanion
 
         public static string GetConfigFilePath()
         {
-            string appDir = AppDomain.CurrentDomain.BaseDirectory;
-            return Path.Combine(appDir, "config.json");
+            return Path.Combine(CompanionStorage.DataDirectory, "config.json");
         }
 
-        public static AppConfig Load(string configPath = null)
+        public static AppConfig Load(string configPath = null, bool validate = true)
         {
             string path = configPath ?? GetConfigFilePath();
             if (File.Exists(path))
@@ -159,8 +158,11 @@ namespace Poe2ItemCompanion
                     }
                     if (config != null)
                     {
-                        config.Validate();
-                        if (config.ProfileStore != null && config.ProfileStore.Profiles.Count == 0) config.Save(path);
+                        if (validate)
+                        {
+                            config.Validate();
+                            if (config.ProfileStore != null && config.ProfileStore.Profiles.Count == 0) config.Save(path);
+                        }
                         Logger.Info("Loaded configuration from: " + path);
                         return config;
                     }
@@ -174,10 +176,29 @@ namespace Poe2ItemCompanion
 
             var defaultConfig = new AppConfig();
             defaultConfig.ProfileStore = new CompanionProfiles { ActiveGame = GameId.Poe2 };
-            defaultConfig.Validate();
-            defaultConfig.Save(path);
-            Logger.Info("Created default configuration: " + path);
+            if (validate)
+            {
+                defaultConfig.Validate();
+                defaultConfig.Save(path);
+                Logger.Info("Created default configuration: " + path);
+            }
             return defaultConfig;
+        }
+
+        internal static void SaveInstalledPobPath(GameId game, string pobPath)
+        {
+            if (!CompanionStorage.Installed || !Path.IsPathRooted(pobPath) || GameIdentity.DetectInstallation(pobPath) != game)
+                throw new InvalidDataException("Setup did not select a matching Path of Building installation.");
+            var active = Load(validate: false);
+            AppConfig profile;
+            if (active.Game == game) profile = active;
+            else if (!active.ProfileStore.Profiles.TryGetValue(game.ToString(), out profile))
+            {
+                profile = new AppConfig { Game = game };
+                active.ProfileStore.Profiles.Add(game.ToString(), profile);
+            }
+            profile.PobPath = Path.GetFullPath(pobPath);
+            active.Save();
         }
 
         // Set on throwaway (test) copies so they can never overwrite the user's config.json.
@@ -190,6 +211,7 @@ namespace Poe2ItemCompanion
             try
             {
                 string path = configPath ?? GetConfigFilePath();
+                if (configPath == null) Directory.CreateDirectory(CompanionStorage.DataDirectory);
                 var serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
                 var store = new CompanionProfiles { ActiveGame = Game };
                 if (ProfileStore != null)
@@ -323,7 +345,7 @@ namespace Poe2ItemCompanion
         // Companion-owned folder for exported builds (never inside the PoB2 install).
         public static string GetExportFolder()
         {
-            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "exports");
+            return Path.Combine(CompanionStorage.DataDirectory, "exports");
         }
 
         public const string SourceShareCode = "ShareCode";

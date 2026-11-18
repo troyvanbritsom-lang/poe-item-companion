@@ -17,6 +17,9 @@ namespace Poe2ItemCompanion
         public static string Root(GameId game) { return game == GameId.Poe1 ? "PathOfBuilding" : "PathOfBuilding2"; }
         public static string DefaultPobPath(GameId game)
         {
+            if (CompanionStorage.Installed)
+                return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                    game == GameId.Poe1 ? "Path of Building Community" : "Path of Building Community (PoE2)");
             return game == GameId.Poe1 ? @"D:\Path of Building Community" : @"D:\Path of Building Community (PoE2)";
         }
 

@@ -17,6 +17,7 @@ namespace Poe2ItemCompanion
         private OverlayFeature _gemFeature;
         private OverlayFeature _passiveFeature;
         private Timer _detectTimer;
+        private bool _checkingUpdates;
 
         public TrayApplicationContext(AppConfig config)
         {
@@ -78,6 +79,42 @@ namespace Poe2ItemCompanion
             // Create and show Main Window on launch
             _mainWindow = new MainWindow(_config, _engine, _hotkeyManager, _notifyIcon, UpdateContextMenu, OpenSettings, SwitchGame);
             _mainWindow.Show();
+            _mainWindow.BeginInvoke(new Action(() => CheckForUpdates(false)));
+        }
+
+        private async void CheckForUpdates(bool manual)
+        {
+            if (_checkingUpdates)
+            {
+                if (manual) MessageBox.Show("An update check is already running.", "Companion updates");
+                return;
+            }
+            _checkingUpdates = true;
+            try
+            {
+                var update = await ReleaseUpdates.CheckAsync();
+                if (update == null)
+                {
+                    if (manual) MessageBox.Show("No newer stable release is available. You are running v" +
+                        ReleaseUpdates.CurrentVersion + ".", "Companion updates");
+                }
+                else if (MessageBox.Show("Version " + update.ToString(3) + " is available. You are running v" +
+                    ReleaseUpdates.CurrentVersion + ".\n\nOpen the official GitHub release page?",
+                    "Companion update available", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(ReleaseUpdates.ReleasePage(update))
+                    {
+                        UseShellExecute = true
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Could not check or open the official companion release.", ex);
+                if (manual) MessageBox.Show("Could not check or open the GitHub release. Try again later.\n\n" +
+                    ex.Message, "Companion updates", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            finally { _checkingUpdates = false; }
         }
 
         public void ShowMainWindow()
@@ -158,6 +195,10 @@ namespace Poe2ItemCompanion
             var settingsItem = new ToolStripMenuItem("Settings...");
             settingsItem.Click += (s, e) => OpenSettings();
             menu.Items.Add(settingsItem);
+
+            var updatesItem = new ToolStripMenuItem("Check for updates... (v" + ReleaseUpdates.CurrentVersion + ")");
+            updatesItem.Click += (s, e) => CheckForUpdates(true);
+            menu.Items.Add(updatesItem);
 
             var logItem = new ToolStripMenuItem("View Log File...");
             logItem.Click += (s, e) => Logger.OpenLogFile();
@@ -404,15 +445,6 @@ Item Level: 82
         private void ExitApp()
         {
             _notifyIcon.Visible = false;
-            if (_mainWindow != null && !_mainWindow.IsDisposed)
-            {
-                _mainWindow.Dispose();
-            }
-            if (_hotkeyManager != null) _hotkeyManager.Dispose();
-            if (_detectTimer != null) _detectTimer.Dispose();
-            if (_gemFeature != null) _gemFeature.Dispose();
-            if (_passiveFeature != null) _passiveFeature.Dispose();
-            if (_engine != null) _engine.Dispose();
             ExitThread();
         }
 

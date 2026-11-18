@@ -20,7 +20,7 @@ namespace Poe2ItemCompanion
     {
         public static string GetBackupFolder()
         {
-            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "backups");
+            return Path.Combine(CompanionStorage.DataDirectory, "backups");
         }
 
         public static EquipResult EquipIntoSource(PobLuaEngine engine, AppConfig config, string itemText, string slotName, out string error)
