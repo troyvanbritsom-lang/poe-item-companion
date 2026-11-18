@@ -75,6 +75,38 @@ namespace Poe2ItemCompanion
             }
         }
 
+        internal static int TestItemConstructors(GameId game, string pobPath)
+        {
+            try
+            {
+                using (var engine = new PobLuaEngine())
+                {
+                    string error;
+                    Require(engine.Initialize(pobPath, AppConfig.GetWrapperScriptPath(), out error, game), error);
+                    Require(engine.LoadBuildXml(Build(game, false), "Item constructor fixture", out error) != null, error);
+                    const string advancedRing = "Item Class: Rings\nRarity: Rare\nOblivion Eye\nDiamond Ring\n--------\nRequirements:\nLevel: 39\n--------\nItem Level: 68\n--------\n"
+                        + "{ Implicit Modifier \u2014 Critical }\n22(20-30)% increased Global Critical Strike Chance (implicit)\n--------\n"
+                        + "{ Prefix Modifier \"Stalwart\" (Tier: 5) \u2014 Life }\n+44(40-54) to maximum Life\n"
+                        + "{ Suffix Modifier \"of the Tempest\" (Tier: 4) \u2014 Elemental, Lightning, Resistance }\n+30(30-35)% to Lightning Resistance\n";
+                    const string boots = "Item Class: Boots\nRarity: Rare\nProbe Boots\nDragonscale Boots\n--------\nItem Level: 82\n--------\n+150 to maximum Life\n35% increased Movement Speed\n";
+                    string candidate = game == GameId.Poe1 ? advancedRing : boots;
+                    string slot = game == GameId.Poe1 ? "Ring 1" : "Boots";
+                    var comparison = engine.CompareItem(candidate, out error);
+                    Require(comparison != null && comparison.Success, game + " comparison: " + error);
+                    var change = comparison.Comparisons.SingleOrDefault(r => r.SlotName == slot);
+                    Require(change != null && change.Lines.Count > 1 && change.After["Life"] - change.Before["Life"] >=
+                        (game == GameId.Poe1 ? 44 : 150), game + " candidate did not produce the expected life gain and tooltip.");
+                    if (game == GameId.Poe1)
+                        Require(comparison.Comparisons.Any(r => r.SlotName == "Ring 2"), "The advanced ring did not compare in both ring slots.");
+                    var export = engine.ExportWithCandidate(candidate, slot, out error);
+                    Require(export != null && export.Success && export.Validated, game + " export: " + error);
+                    Console.WriteLine("PASSED: " + game + " native item constructor, tooltip, and validated export.");
+                }
+                return 0;
+            }
+            catch (Exception ex) { Console.WriteLine("FAILED ITEM CONSTRUCTORS: " + ex.Message); return 1; }
+        }
+
         public static int RunAcquisition()
         {
             try
@@ -232,12 +264,25 @@ namespace Poe2ItemCompanion
             return d;
         }
 
-        private static void TestTimelessJewel()
+        internal static int RunTimelessJewel(string pobPath, string guideUrl)
+        {
+            try { TestTimelessJewel(pobPath, guideUrl); return 0; }
+            catch (Exception ex) { Console.WriteLine("FAILED TIMELESS JEWEL: " + ex.Message); return 1; }
+        }
+
+        private static void TestTimelessJewel(string pobPath = null, string guideUrl = null)
         {
             using (var engine = new PobLuaEngine())
             {
                 string error;
-                Require(engine.Initialize(GameIdentity.DefaultPobPath(GameId.Poe1), AppConfig.GetWrapperScriptPath(), out error, GameId.Poe1), error);
+                Require(engine.Initialize(pobPath ?? GameIdentity.DefaultPobPath(GameId.Poe1), AppConfig.GetWrapperScriptPath(), out error, GameId.Poe1), error);
+                if (guideUrl != null)
+                {
+                    string xmlText, resolved, description;
+                    Require(PobShareCode.TryResolve(guideUrl, GameId.Poe1, out xmlText, out resolved, out description, out error), error);
+                    var guide = engine.LoadBuildXml(xmlText, "Reported PoE1 guide", out error);
+                    Require(guide != null && guide.Success && engine.GetBuildDetails(out error) != null, "Guide load: " + error);
+                }
                 string baseXml = Build(GameId.Poe1, false);
                 Require(engine.LoadBuildXml(baseXml, "Jewel baseline", out error) != null, error);
                 var tree = engine.GetBuildDetails(out error).Tree;

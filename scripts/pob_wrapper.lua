@@ -135,31 +135,33 @@ function pobCompanion.init(pobPath, selectedGame)
         return path
     end
 
-    function LoadModule(name, ...)
-        if name == "Modules/DataJewelFileLoader" then
-            -- Use the installed lookup data without PoB's GUI file-search API or disk cache writes.
-            return function(jewelTypeName)
-                if not jewelTypeName:match("^[%w]+$") then error("Invalid jewel lookup data name") end
-                local path = pobPath .. "Data/TimelessJewelData/" .. jewelTypeName
-                local chunks = {}
-                local file = io.open(path .. ".zip", "rb")
-                if file then
-                    chunks[1] = file:read("*a")
-                    file:close()
-                else
-                    local part = 0
-                    while true do
-                        file = io.open(path .. ".zip.part" .. part, "rb")
-                        if not file then break end
-                        chunks[#chunks + 1] = file:read("*a")
-                        file:close()
-                        part = part + 1
-                    end
-                end
-                if #chunks == 0 then error("Missing installed jewel lookup data: " .. jewelTypeName) end
-                return Inflate(table.concat(chunks))
+    local function loadJewelFile(jewelTypeName)
+        if not jewelTypeName:match("^[%w]+$") then error("Invalid jewel lookup data name") end
+        local path = pobPath .. "Data/TimelessJewelData/" .. jewelTypeName
+        local chunks = {}
+        local file = io.open(path .. ".zip", "rb")
+        if file then
+            chunks[1] = file:read("*a")
+            file:close()
+        else
+            local part = 0
+            while true do
+                file = io.open(path .. ".zip.part" .. part, "rb")
+                if not file then break end
+                chunks[#chunks + 1] = file:read("*a")
+                file:close()
+                part = part + 1
             end
         end
+        if #chunks == 0 then error("Missing installed jewel lookup data: " .. jewelTypeName) end
+        return Inflate(table.concat(chunks))
+    end
+
+    -- Both PoB module APIs must use the read-only loader instead of the GUI file search.
+    package.preload["Modules.DataJewelFileLoader"] = function() return loadJewelFile end
+
+    function LoadModule(name, ...)
+        if name == "Modules/DataJewelFileLoader" then return loadJewelFile end
         local path = resolvePath(name)
         local fn, err = loadfile(path)
         if not fn then
@@ -412,6 +414,15 @@ local function socketNotice(item, slotName)
     return "Candidate has matching linked colour groups for saved skills. Item-granted supports, requirements and skill usability still need verification."
 end
 
+local function newPobObject(className, ...)
+    -- Newer PoB separates allocation from construction; older PoB takes arguments in new().
+    local object = new(className)
+    local construct = object[className]
+    if construct then return construct(object, ...) end
+    if select("#", ...) == 0 then return object end
+    return new(className, ...)
+end
+
 function pobCompanion.compareItem(itemRawText)
     if not currentBuild then
         return json.encode({ success = false, error = "No build currently loaded" })
@@ -422,7 +433,7 @@ function pobCompanion.compareItem(itemRawText)
 
     local newItem = nil
     local parseSuccess, parseErr = pcall(function()
-        newItem = new("Item", itemRawText)
+        newItem = newPobObject("Item", itemRawText)
     end)
 
     if not parseSuccess or not newItem or not newItem.name then
@@ -436,7 +447,7 @@ function pobCompanion.compareItem(itemRawText)
     if not newItem.base then
         return json.encode({
             success = false,
-            error = "Item base '" .. tostring(newItem.baseName or newItem.name) .. "' is not recognized in Path of Building 2 (PoE2)."
+            error = "Item base '" .. tostring(newItem.baseName or newItem.name) .. "' is not recognized by the selected Path of Building engine."
         })
     end
 
@@ -477,7 +488,7 @@ function pobCompanion.compareItem(itemRawText)
         end)
         if not calcOk or not output then return end
 
-        local tooltip = new("Tooltip")
+        local tooltip = newPobObject("Tooltip")
         local header = "Equipping this in " .. (slot.label or slotName) .. (selItem and ("\n(replacing " .. selItem.name .. ")") or "")
         local addOk = pcall(function()
             currentBuild:AddStatComparesToTooltip(tooltip, calcBase, output, header)
@@ -558,8 +569,8 @@ function pobCompanion.exportWithCandidate(itemRawText, slotName)
         local itemsTab = currentBuild.itemsTab
         local slot = itemsTab.slots[slotName]
         if not slot then error("Unknown slot '" .. tostring(slotName) .. "'") end
-        local item = new("Item", itemRawText)
-        if not item.base then error("Item base is not recognized by Path of Building 2") end
+        local item = newPobObject("Item", itemRawText)
+        if not item.base then error("Item base is not recognized by the selected Path of Building engine") end
         if not itemsTab:IsItemValidForSlot(item, slotName) then error("Item does not fit slot " .. slotName) end
         local replaced = itemsTab.items[slot.selItemId]
         itemsTab:AddItem(item, true)

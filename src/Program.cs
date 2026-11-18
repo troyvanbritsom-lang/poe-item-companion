@@ -74,6 +74,24 @@ namespace Poe2ItemCompanion
                 if (firstArg == "--test-pob-bridge") return PobBridgeTests.Run(
                     args.Length > 1 ? Path.GetFullPath(args[1]) : null, args.Length > 2 ? Path.GetFullPath(args[2]) : null);
                 if (firstArg == "--test-dual-game") return DualGameTests.Run();
+                if (firstArg == "--test-timeless-jewel")
+                {
+                    if (args.Length < 2 || args.Length > 3)
+                    {
+                        Console.WriteLine("Use --test-timeless-jewel <PoB1 folder> [guide link].");
+                        return 1;
+                    }
+                    return DualGameTests.RunTimelessJewel(args[1], args.Length == 3 ? args[2] : null);
+                }
+                if (firstArg == "--test-item-constructors")
+                {
+                    if (!_requestedGame.HasValue || args.Length != 2)
+                    {
+                        Console.WriteLine("Use --game poe1|poe2 --test-item-constructors <PoB folder>.");
+                        return 1;
+                    }
+                    return DualGameTests.TestItemConstructors(_requestedGame.Value, args[1]);
+                }
                 if (firstArg == "--test-gem-acquisition") return DualGameTests.RunAcquisition();
                 if (firstArg == "--test-quest-planner") return QuestPlannerTests.Run();
                 if (firstArg == "--test-equipment-trade") return EquipmentTradeTests.Run(args.Length > 1 ? Path.GetFullPath(args[1]) : null);
